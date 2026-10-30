@@ -2,6 +2,14 @@
 <html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>蟑螂模擬器 · 午夜廚房</title>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#101916;color:#eef4df;font:16px system-ui}main{max-width:1100px;margin:auto;padding:16px}header{display:flex;align-items:center;justify-content:space-between;gap:12px}h1{font-size:24px;margin:0}small{color:#acc4ad}button{background:#d4f176;color:#17251b;border:0;border-radius:12px;min-width:48px;min-height:48px;padding:10px 16px;font:inherit;cursor:pointer}#hud{padding:12px 0;color:#d4f176;min-height:48px}#stage{position:relative}canvas{width:100%;display:block;background:#24312b;border:1px solid #526552;border-radius:16px;touch-action:none}#message{min-height:48px;padding:10px 0}#controls{display:flex;justify-content:space-between;align-items:center;padding:8px max(0px,env(safe-area-inset-right)) 8px max(0px,env(safe-area-inset-left));gap:12px}#stick{width:112px;height:112px;background:#293c30;border:2px solid #758c69;border-radius:50%;position:relative;touch-action:none;flex-shrink:0}#knob{width:44px;height:44px;background:#d4f176;border-radius:50%;position:absolute;left:32px;top:32px;pointer-events:none}.actions{display:flex;gap:8px;flex-wrap:wrap}.actions button{touch-action:none}p{line-height:1.6;color:#b9c8b7}.legend{font-size:14px}#rotate{display:none;color:#f4cc80}@media(orientation:portrait) and (max-width:700px){#rotate{display:block}h1{font-size:20px}main{padding:10px}}@media(orientation:landscape) and (max-height:600px){main{padding:6px 16px}h1{font-size:18px}#hud,#message{min-height:28px;padding:3px 0}.legend,small{display:none}canvas{max-height:58vh}#stick{width:88px;height:88px}#knob{left:20px;top:20px}#controls{padding:4px 0}}
+/* Keep the playfield proportional and touch controls visible on short screens. */
+canvas{object-fit:contain}
+@media(orientation:landscape) and (max-height:600px){
+main{display:grid;grid-template-columns:minmax(0,1fr) 170px;gap:4px 10px;padding-left:max(10px,env(safe-area-inset-left));padding-right:max(10px,env(safe-area-inset-right))}
+header,#hud,#message{grid-column:1/-1}#hud{font-size:12px}#message{font-size:13px}
+#stage{grid-column:1;grid-row:3}canvas{max-height:calc(100svh - 150px)}
+#controls{grid-column:2;grid-row:3;flex-direction:column;justify-content:center;gap:6px}.actions{justify-content:center;gap:4px}.actions button{font-size:13px;padding:6px;min-height:48px}#stick{width:76px;height:76px}#knob{left:14px;top:14px}
+}
 </style>
 <main><header><div><small>PROTOTYPE 0.1 / MIDNIGHT KITCHEN</small><h1>蟑螂模擬器 · 午夜廚房</h1></div><div><button id="pause">暫停</button> <button id="restart">重開</button></div></header>
 <div id="hud" role="status"></div><div id="rotate">建議將手機橫放，操作空間更大。</div><div id="stage"><canvas id="game" width="960" height="540" aria-label="俯視角廚房遊戲，操作說明位於下方"></canvas></div><div id="message" role="status" aria-live="polite"></div>
@@ -35,7 +43,7 @@ for(const n of state.npcs){n.t+=dt;n.cool=Math.max(0,n.cool-dt);n.fear=Math.max(
 let target=n.spawn,rate=45;if(n.mode==='react'){target=p;rate=n.type==='shy'?-115:75}else if(n.mode==='patrol'){target={x:n.spawn.x+Math.cos(n.t*.7)*55,y:n.spawn.y+Math.sin(n.t*.7)*55}}else rate=0;
 if(n.attack){n.attack.left-=dt;if(n.attack.left<=0){const a=n.attack;if(n.type==='chase'){if(p.fly<=0&&distance(p,a)<45)hurt(25)}else state.hazards.push({x:a.x,y:a.y,left:3,tick:0});n.attack=null;n.cool=n.type==='chase'?1.5:4}}else if(sees&&n.cool===0&&((n.type==='chase'&&distance(n,p)<65)||(n.type==='spray'&&distance(n,p)<160))){n.attack={x:p.x,y:p.y,left:n.type==='chase'?.6:.8};rate=0}
 if(n.attack)rate=0;const d=distance(n,target);if(d>5)move(n,(target.x-n.x)/d*rate*dt,(target.y-n.y)/d*rate*dt,false,16)}
-for(const h of state.hazards){h.left-=dt;h.tick-=dt;if(h.tick<=0&&distance(p,h)<60){hurt(12);h.tick=1}}state.hazards=state.hazards.filter(h=>h.left>0);
+for(const h of state.hazards){h.left-=dt;h.tick-=dt;if(h.left>0&&h.tick<=0&&distance(p,h)<60){hurt(12);h.tick=1}}state.hazards=state.hazards.filter(h=>h.left>0);
 if(!state.end&&state.delivered===3&&state.scared&&state.big&&state.flown&&safe()){state.end='win';say('午夜廚房制霸！全部任務完成。按「重開」可再玩一局。')}}
 function rect(r,c){ctx.fillStyle=c;ctx.fillRect(r.x,r.y,r.w,r.h)}
 function circle(x,y,r,c){ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle=c;ctx.fill()}

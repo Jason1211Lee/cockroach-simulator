@@ -1,0 +1,29 @@
+import fs from 'node:fs';
+import vm from 'node:vm';
+import assert from 'node:assert/strict';
+const html=fs.readFileSync(new URL('./3d.html',import.meta.url),'utf8');
+const events={},elements=new Map();let renders=0,scheduled;
+function element(id){if(!elements.has(id))elements.set(id,{value:id==='#role'?'roach':id==='#type'?'fast':'shy',textContent:'',style:{},handlers:{},addEventListener(k,f){(this.handlers[k]??=[]).push(f)},setPointerCapture(){},getBoundingClientRect(){return {left:0,top:0,width:120,height:120}},fire(k,e){for(const f of this.handlers[k]??[])f(e);this['on'+k]?.(e)}});return elements.get(id)}
+const ids=[...html.matchAll(/id="([^"]+)"/g)].map(m=>m[1]);ids.forEach(id=>element('#'+id));
+const document={querySelector(s){assert.ok(elements.has(s),'missing DOM id '+s);return element(s)},querySelectorAll(){return []},addEventListener(k,f){(events[k]??=[]).push(f)},body:{append(){}}};
+class Vector{constructor(x=0,y=0,z=0){this.set(x,y,z)}set(x,y,z){Object.assign(this,{x,y,z});return this}}
+class Object3D{constructor(){this.position=new Vector();this.scale=new Vector(1,1,1);this.rotation={x:0,y:0,z:0};this.children=[]}add(x){this.children.push(x)}remove(x){this.children=this.children.filter(v=>v!==x)}setFromPoints(){return this}lookAt(){}updateProjectionMatrix(){}}
+class Renderer{constructor(){this.domElement=element('canvas')}setPixelRatio(){}setSize(){}render(){renders++}}
+const T=new Proxy({Vector3:Vector,WebGLRenderer:Renderer,MathUtils:{damp:(a,b,k,dt)=>b+(a-b)*Math.exp(-k*dt)}},{get:(o,k)=>o[k]??Object3D});
+let code=html.split('<script type="module">')[1].split('</script>')[0];const globals={T};
+for(const m of code.matchAll(/import \{([^}]+)\} from '([^']+)';/g)){const exports=await import(new URL(m[2],import.meta.url));for(const name of m[1].split(',').map(v=>v.trim())){assert.ok(exports[name]!==undefined,name+' export missing');globals[name]=exports[name]}}
+code=code.replace(/^import .*;$/gm,'');
+const c=vm.createContext({...globals,document,innerWidth:844,innerHeight:390,devicePixelRatio:2,performance:{now:()=>0},requestAnimationFrame:f=>scheduled=f,addEventListener(k,f){(events[k]??=[]).push(f)},console});
+vm.runInContext(code,c);const read=s=>vm.runInContext(s,c);let now=0;
+function frames(n){for(let i=0;i<n;i++){now+=16;scheduled(now)}}
+function event(k,e={}){for(const fn of events[k]??[])fn(e)}
+assert.equal(read('hp'),100);assert.equal(read('foods.length'),3);assert.ok(scheduled);
+event('keydown',{key:'ArrowUp',code:'ArrowUp',preventDefault(){}});frames(20);event('keyup',{key:'ArrowUp'});assert.ok(read('roach.position.z')<3);assert.ok(renders>=20);
+element('#type').value='fly';element('#type').onchange();element('#act').onclick();assert.equal(read('flight'),5);frames(20);assert.ok(read('roach.position.y')>.4);
+const old=read('altitude');element('#rise').onclick();assert.ok(read('altitude')>old);element('#lower').onclick();assert.equal(read('altitude'),old);
+element('#act').onclick();assert.equal(read('flight'),0);frames(100);assert.ok(read('roach.position.y')<.01);
+element('canvas').fire('pointerdown',{button:0,pointerId:8,clientX:0,clientY:0});element('canvas').fire('pointermove',{pointerId:8,clientX:80,clientY:20});assert.notEqual(read('yaw'),0);
+element('#pad').fire('pointerdown',{pointerId:9,clientX:105,clientY:60});assert.ok(read('axis.x')>0);event('visibilitychange');assert.equal(read('axis.x'),0);assert.equal(read('lookPointer'),null);
+element('#role').value='human';element('#role').onchange();read('roach.position.set(human.position.x,0,human.position.z)');element('#act').onclick();assert.equal(read('score'),1);
+element('#reset').onclick();assert.equal(read('score'),0);assert.equal(read('hp'),100);assert.equal(read('foods.length'),3);assert.equal(read('cool'),0);
+console.log('PASS: entire page startup/module exports, rendered loop, arrow movement, role/type handlers, takeoff/altitude/landing, camera drag, joystick/background reset, human action and full restart. DOM/Three substitutes; no real WebGL rendering or mobile device test.');

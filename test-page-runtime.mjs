@@ -18,12 +18,13 @@ vm.runInContext(code,c);const read=s=>vm.runInContext(s,c);let now=0;
 function frames(n){for(let i=0;i<n;i++){now+=16;scheduled(now)}}
 function event(k,e={}){for(const fn of events[k]??[])fn(e)}
 assert.equal(read('hp'),100);assert.equal(read('foods.length'),3);assert.ok(scheduled);
+element('#act').onclick();assert.match(element('#feedback').textContent,/不能飛行/);frames(3);assert.match(element('#feedback').textContent,/不能飛行/);
 event('keydown',{key:'ArrowUp',code:'ArrowUp',preventDefault(){}});frames(20);event('keyup',{key:'ArrowUp'});assert.ok(read('roach.position.z')<3);assert.ok(renders>=20);
-element('#type').value='fly';element('#type').onchange();element('#act').onclick();assert.equal(read('flight'),5);frames(20);assert.ok(read('roach.position.y')>.4);
+element('#type').value='fly';element('#type').onchange();element('#act').onclick();assert.equal(read('flight'),5);assert.match(element('#feedback').textContent,/起飛/);frames(20);assert.ok(read('roach.position.y')>.4);
 const old=read('altitude');element('#rise').onclick();assert.ok(read('altitude')>old);element('#lower').onclick();assert.equal(read('altitude'),old);
-element('#act').onclick();assert.equal(read('flight'),0);frames(100);assert.ok(read('roach.position.y')<.01);
+element('#act').onclick();assert.equal(read('flight'),0);assert.match(element('#feedback').textContent,/降落/);element('#act').onclick();assert.match(element('#feedback').textContent,/冷卻/);frames(100);assert.ok(read('roach.position.y')<.01);
 element('canvas').fire('pointerdown',{button:0,pointerId:8,clientX:0,clientY:0});element('canvas').fire('pointermove',{pointerId:8,clientX:80,clientY:20});assert.notEqual(read('yaw'),0);
 element('#pad').fire('pointerdown',{pointerId:9,clientX:105,clientY:60});assert.ok(read('axis.x')>0);event('visibilitychange');assert.equal(read('axis.x'),0);assert.equal(read('lookPointer'),null);
-element('#role').value='human';element('#role').onchange();read('roach.position.set(human.position.x,0,human.position.z)');element('#act').onclick();assert.equal(read('score'),1);
+element('#role').value='human';element('#role').onchange();element('#act').onclick();assert.match(element('#feedback').textContent,/距離/);read('roach.position.set(human.position.x,0,human.position.z)');element('#act').onclick();assert.equal(read('score'),1);assert.match(element('#feedback').textContent,/命中/);element('#act').onclick();assert.match(element('#feedback').textContent,/冷卻/);
 element('#reset').onclick();assert.equal(read('score'),0);assert.equal(read('hp'),100);assert.equal(read('foods.length'),3);assert.equal(read('cool'),0);
 console.log('PASS: entire page startup/module exports, rendered loop, arrow movement, role/type handlers, takeoff/altitude/landing, camera drag, joystick/background reset, human action and full restart. DOM/Three substitutes; no real WebGL rendering or mobile device test.');

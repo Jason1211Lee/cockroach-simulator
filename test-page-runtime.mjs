@@ -25,6 +25,14 @@ const old=read('altitude');element('#rise').onclick();assert.ok(read('altitude')
 element('#act').onclick();assert.equal(read('flight'),0);assert.match(element('#feedback').textContent,/降落/);element('#act').onclick();assert.match(element('#feedback').textContent,/冷卻/);frames(100);assert.ok(read('roach.position.y')<.01);
 element('canvas').fire('pointerdown',{button:0,pointerId:8,clientX:0,clientY:0});element('canvas').fire('pointermove',{pointerId:8,clientX:80,clientY:20});assert.notEqual(read('yaw'),0);
 element('#pad').fire('pointerdown',{pointerId:9,clientX:105,clientY:60});assert.ok(read('axis.x')>0);event('visibilitychange');assert.equal(read('axis.x'),0);assert.equal(read('lookPointer'),null);
+element('#type').value='fly';element('#type').onchange();element('#act').onclick();
+element('#pause').onclick();assert.equal(read('paused'),true);
+const frozen=read('JSON.stringify([roach.position.x,roach.position.y,roach.position.z,human.position.x,human.position.z,hp,cool,flight,score])');
+element('#act').onclick();element('#rise').onclick();frames(40);
+assert.equal(read('JSON.stringify([roach.position.x,roach.position.y,roach.position.z,human.position.x,human.position.z,hp,cool,flight,score])'),frozen);
+element('#pause').onclick();frames(2);assert.ok(read('flight')<5);
+document.hidden=true;event('visibilitychange');assert.equal(read('paused'),true);document.hidden=false;event('visibilitychange');assert.equal(read('paused'),true);
+element('#reset').onclick();assert.equal(read('paused'),false);
 element('#role').value='human';element('#role').onchange();element('#act').onclick();assert.match(element('#feedback').textContent,/距離/);read('roach.position.set(human.position.x,0,human.position.z)');element('#act').onclick();assert.equal(read('score'),1);assert.match(element('#feedback').textContent,/命中/);element('#act').onclick();assert.match(element('#feedback').textContent,/冷卻/);
 element('#reset').onclick();assert.equal(read('score'),0);assert.equal(read('hp'),100);assert.equal(read('foods.length'),3);assert.equal(read('cool'),0);
-console.log('PASS: entire page startup/module exports, rendered loop, arrow movement, role/type handlers, takeoff/altitude/landing, camera drag, joystick/background reset, human action and full restart. DOM/Three substitutes; no real WebGL rendering or mobile device test.');
+console.log('PASS: entire page startup/module exports, rendered loop, arrow movement, role/type handlers, takeoff/altitude/landing, camera drag, joystick/background reset, pause freeze/resume/background gating, human action and full restart. DOM/Three substitutes; no real WebGL rendering or mobile device test.');

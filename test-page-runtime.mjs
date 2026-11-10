@@ -28,9 +28,24 @@ element('#pad').fire('pointerdown',{pointerId:9,clientX:105,clientY:60});assert.
 element('#type').value='fly';element('#type').onchange();element('#act').onclick();
 element('#pause').onclick();assert.equal(read('paused'),true);
 const frozen=read('JSON.stringify([roach.position.x,roach.position.y,roach.position.z,human.position.x,human.position.z,hp,cool,flight,score])');
-element('#act').onclick();element('#rise').onclick();frames(40);
+const pausedControls=read('JSON.stringify([altitude,yaw,pitch,axis,Array.from(keys),pointer,lookPointer])');
+for(const id of ['#act','#rise','#lower','#left','#right']){
+ element(id).onclick();
+ assert.equal(read('JSON.stringify([altitude,yaw,pitch,axis,Array.from(keys),pointer,lookPointer])'),pausedControls,id+' must not change paused controls');
+}
+event('keydown',{key:'w',code:'KeyW'});
+element('#pad').fire('pointerdown',{pointerId:21,clientX:105,clientY:60});
+element('#pad').fire('pointermove',{pointerId:21,clientX:60,clientY:15});
+element('canvas').fire('pointerdown',{button:0,pointerId:22,clientX:0,clientY:0});
+element('canvas').fire('pointermove',{pointerId:22,clientX:80,clientY:20});
+frames(40);
+assert.equal(read('JSON.stringify([altitude,yaw,pitch,axis,Array.from(keys),pointer,lookPointer])'),pausedControls,'paused controls must not accumulate direction, altitude or camera changes');
 assert.equal(read('JSON.stringify([roach.position.x,roach.position.y,roach.position.z,human.position.x,human.position.z,hp,cool,flight,score])'),frozen);
+const resumePosition=read('JSON.stringify([roach.position.x,roach.position.z])');
 element('#pause').onclick();frames(2);assert.ok(read('flight')<5);
+assert.equal(read('JSON.stringify([roach.position.x,roach.position.z])'),resumePosition,'resume must not move from input pressed while paused');
+event('keydown',{key:'w',code:'KeyW'});frames(4);event('keyup',{key:'w'});
+assert.notEqual(read('JSON.stringify([roach.position.x,roach.position.z])'),resumePosition,'fresh input must work after resume');
 document.hidden=true;event('visibilitychange');assert.equal(read('paused'),true);document.hidden=false;event('visibilitychange');assert.equal(read('paused'),true);
 element('#reset').onclick();assert.equal(read('paused'),false);
 element('#role').value='human';element('#role').onchange();element('#act').onclick();assert.match(element('#feedback').textContent,/距離/);read('roach.position.set(human.position.x,0,human.position.z)');element('#act').onclick();assert.equal(read('score'),1);assert.match(element('#feedback').textContent,/命中/);element('#act').onclick();assert.match(element('#feedback').textContent,/冷卻/);

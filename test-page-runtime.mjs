@@ -18,6 +18,28 @@ vm.runInContext(code,c);const read=s=>vm.runInContext(s,c);let now=0;
 function frames(n){for(let i=0;i<n;i++){now+=16;scheduled(now)}}
 function event(k,e={}){for(const fn of events[k]??[])fn(e)}
 assert.equal(read('hp'),100);assert.equal(read('foods.length'),3);assert.ok(scheduled);
+
+element('#scare').onclick();assert.equal(read('progress.xp'),0,'distant scare gives no XP');
+read('human.position.set(roach.position.x+.5,0,roach.position.z)');
+element('#scare').onclick();assert.equal(read('progress.xp'),20);
+element('#scare').onclick();assert.equal(read('progress.xp'),20,'scare reward only once');
+read('roach.position.set(foods[0].position.x,0,foods[0].position.z)');frames(1);
+assert.equal(read('progress.xp'),30);assert.equal(read('growthStats(progress.xp).level'),2);
+assert.equal(read('growthStats(progress.xp).strength'),2);
+assert.match(element('#status').textContent,/Lv 2 · XP 30 · 力量 2/);
+frames(3);assert.equal(read('progress.xp'),30,'collected food cannot reward twice');
+function walkSample(){
+ read('roach.position.set(-4,0,3);roach.rotation.y=0');
+ event('keydown',{key:'w',code:'KeyW'});frames(10);event('keyup',{key:'w'});
+ return 3-read('roach.position.z');
+}
+const grownDistance=walkSample();
+element('#reset').onclick();assert.equal(read('progress.xp'),0);assert.equal(read('progress.claimed.size'),0);
+const baseDistance=walkSample();assert.ok(Math.abs(grownDistance/baseDistance-1.1)<1e-9,'level 2 moves 10% farther');
+element('#mood').value='chase';element('#mood').onchange();
+read('human.position.set(roach.position.x+.5,0,roach.position.z)');element('#scare').onclick();assert.equal(read('progress.xp'),0);
+element('#mood').value='shy';element('#mood').onchange();
+
 element('#act').onclick();assert.match(element('#feedback').textContent,/不能飛行/);frames(3);assert.match(element('#feedback').textContent,/不能飛行/);
 event('keydown',{key:'ArrowUp',code:'ArrowUp',preventDefault(){}});frames(20);event('keyup',{key:'ArrowUp'});assert.ok(read('roach.position.z')<3);assert.ok(renders>=20);
 element('#type').value='fly';element('#type').onchange();element('#act').onclick();assert.equal(read('flight'),5);assert.match(element('#feedback').textContent,/起飛/);frames(20);assert.ok(read('roach.position.y')>.4);

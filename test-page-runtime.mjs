@@ -34,6 +34,12 @@ function walkSample(){
  return 3-read('roach.position.z');
 }
 const grownDistance=walkSample();
+read('roach.position.set(largeFood.position.x,0,largeFood.position.z)');
+element('#carry').onclick();assert.equal(read('carrying'),true);
+const carryDistance=walkSample();
+assert.ok(Math.abs(carryDistance/grownDistance-.8)<1e-9,'carrying reduces actual movement by 20%');
+element('#act').onclick();assert.equal(read('flight'),0);assert.match(element('#feedback').textContent,/搬運時/);
+element('#carry').onclick();assert.equal(read('carrying'),false);
 element('#reset').onclick();assert.equal(read('progress.xp'),0);assert.equal(read('progress.claimed.size'),0);
 const baseDistance=walkSample();assert.ok(Math.abs(grownDistance/baseDistance-1.1)<1e-9,'level 2 moves 10% farther');
 element('#mood').value='chase';element('#mood').onchange();
@@ -72,4 +78,42 @@ document.hidden=true;event('visibilitychange');assert.equal(read('paused'),true)
 element('#reset').onclick();assert.equal(read('paused'),false);
 element('#role').value='human';element('#role').onchange();element('#act').onclick();assert.match(element('#feedback').textContent,/距離/);read('roach.position.set(human.position.x,0,human.position.z)');element('#act').onclick();assert.equal(read('score'),1);assert.match(element('#feedback').textContent,/命中/);element('#act').onclick();assert.match(element('#feedback').textContent,/冷卻/);
 element('#reset').onclick();assert.equal(read('score'),0);assert.equal(read('hp'),100);assert.equal(read('foods.length'),3);assert.equal(read('cool'),0);
+
+// Exercise all archetypes through collection, delivery, victory and restart.
+element('#role').value='roach';element('#mood').value='shy';
+for(const type of ['fast','agile','fly']){
+ element('#type').value=type;element('#type').onchange();
+ read('roach.position.set(largeFood.position.x,0,largeFood.position.z)');
+ element('#carry').onclick();assert.equal(read('carrying'),false);assert.match(element('#feedback').textContent,/力量 2/);
+ read('human.position.set(roach.position.x+.5,0,roach.position.z)');
+ element('#scare').onclick();
+ for(let i=0;i<3;i++){read('roach.position.set(foods[0].position.x,0,foods[0].position.z)');frames(1);}
+ assert.equal(read('score'),3);assert.equal(read('end'),false,'food alone must not end before large delivery');
+ assert.equal(read('progress.xp'),50);
+ read('roach.position.set(largeFood.position.x,0,largeFood.position.z)');
+ if(type==='fly'){
+  element('#act').onclick();element('#carry').onclick();assert.equal(read('carrying'),false,'cannot pick up during takeoff');
+  element('#act').onclick();frames(100);
+ }
+ element('#carry').onclick();assert.equal(read('carrying'),true);
+ element('#pause').onclick();element('#carry').onclick();assert.equal(read('carrying'),true,'pause blocks drop');
+ element('#pause').onclick();
+ read('roach.position.set(2,0,3)');element('#carry').onclick();assert.equal(read('carrying'),false);
+ assert.equal(read('largeDelivered'),false);assert.equal(read('progress.xp'),50,'drop gives no reward');
+ element('#carry').onclick();assert.equal(read('carrying'),true,'can pick up dropped food');
+ read('roach.position.set(-4,0,3)');element('#carry').onclick();
+ assert.equal(read('largeDelivered'),true);assert.equal(read('carrying'),false);
+ assert.equal(read('progress.xp'),80);assert.equal(read('growthStats(progress.xp).level'),3);
+ assert.equal(read('end'),true);
+ element('#carry').onclick();frames(3);assert.equal(read('progress.xp'),80,'delivery reward once');
+ element('#reset').onclick();assert.equal(read('carrying'),false);assert.equal(read('largeDelivered'),false);assert.equal(read('progress.xp'),0);
+}
+element('#mood').value='chase';element('#mood').onchange();
+for(let i=0;i<3;i++){read('roach.position.set(foods[0].position.x,0,foods[0].position.z)');frames(1);}
+assert.equal(read('progress.xp'),30,'non-shy route can upgrade without scare');
+read('roach.position.set(largeFood.position.x,0,largeFood.position.z)');element('#carry').onclick();assert.equal(read('carrying'),true);
+read('roach.position.set(-4,0,3)');element('#carry').onclick();
+assert.equal(read('progress.xp'),60);assert.equal(read('end'),true,'no scare required to win');
+element('#role').value='human';element('#role').onchange();read('roach.position.set(largeFood.position.x,0,largeFood.position.z)');element('#carry').onclick();assert.equal(read('carrying'),false,'human cannot use roach delivery');
+console.log('PASS: large food strength gate, carrying slowdown, ground-only pickup, drop/re-pickup, pause, all archetype collection/delivery victory, level 3, reset and role gating.');
 console.log('PASS: entire page startup/module exports, rendered loop, arrow movement, role/type handlers, takeoff/altitude/landing, camera drag, joystick/background reset, pause freeze/resume/background gating, human action and full restart. DOM/Three substitutes; no real WebGL rendering or mobile device test.');

@@ -115,5 +115,23 @@ read('roach.position.set(largeFood.position.x,0,largeFood.position.z)');element(
 read('roach.position.set(-4,0,3)');element('#carry').onclick();
 assert.equal(read('progress.xp'),60);assert.equal(read('end'),true,'no scare required to win');
 element('#role').value='human';element('#role').onchange();read('roach.position.set(largeFood.position.x,0,largeFood.position.z)');element('#carry').onclick();assert.equal(read('carrying'),false,'human cannot use roach delivery');
+
+element('#role').value='roach';element('#type').value='fast';element('#mood').value='chase';
+function chaseSetup(){element('#reset').onclick();read('human.position.set(roach.position.x+.5,0,roach.position.z)');frames(1);}
+chaseSetup();assert.equal(read('chaseAttack.phase'),'windup');assert.equal(read('hp'),100);assert.equal(read('attackMarker.visible'),true);
+assert.match(element('#threat').textContent,/拖鞋預警/);
+const attackPosition=read('JSON.stringify(human.position)');frames(20);assert.equal(read('hp'),100);
+assert.equal(read('JSON.stringify(human.position)'),attackPosition,'NPC stands still during windup');
+element('#pause').onclick();const frozenAttack=read('JSON.stringify(chaseAttack)');frames(50);
+assert.equal(read('JSON.stringify(chaseAttack)'),frozenAttack);assert.equal(read('hp'),100);
+element('#pause').onclick();frames(18);assert.equal(read('hp'),80,'one strike after warning');frames(50);assert.equal(read('hp'),80,'recovery cannot hit again');
+chaseSetup();const fixedTarget=read('JSON.stringify(chaseAttack.target)');
+read('roach.position.z-=1');frames(40);assert.equal(read('hp'),100,'leaving fixed target evades');
+assert.equal(read('JSON.stringify(chaseAttack.target)'),fixedTarget);
+element('#type').value='fly';chaseSetup();element('#act').onclick();frames(40);
+assert.ok(read('roach.position.y')>.5);assert.equal(read('hp'),100,'enough flight height avoids ground strike');
+element('#type').value='fast';chaseSetup();frames(800);assert.equal(read('hp'),0);assert.equal(read('end'),true);
+element('#reset').onclick();assert.equal(read('chaseAttack.phase'),'idle');assert.equal(read('attackMarker.visible'),false);assert.equal(read('hp'),100);
+console.log('PASS: chase warning marker, stopped windup, pause freeze, single damage, evade, flight height, loss and reset.');
 console.log('PASS: large food strength gate, carrying slowdown, ground-only pickup, drop/re-pickup, pause, all archetype collection/delivery victory, level 3, reset and role gating.');
 console.log('PASS: entire page startup/module exports, rendered loop, arrow movement, role/type handlers, takeoff/altitude/landing, camera drag, joystick/background reset, pause freeze/resume/background gating, human action and full restart. DOM/Three substitutes; no real WebGL rendering or mobile device test.');

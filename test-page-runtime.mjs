@@ -132,6 +132,25 @@ element('#type').value='fly';chaseSetup();element('#act').onclick();frames(40);
 assert.ok(read('roach.position.y')>.5);assert.equal(read('hp'),100,'enough flight height avoids ground strike');
 element('#type').value='fast';chaseSetup();frames(800);assert.equal(read('hp'),0);assert.equal(read('end'),true);
 element('#reset').onclick();assert.equal(read('chaseAttack.phase'),'idle');assert.equal(read('attackMarker.visible'),false);assert.equal(read('hp'),100);
+
+element('#mood').value='spray';element('#type').value='fast';
+function spraySetup(){element('#reset').onclick();read('human.position.set(roach.position.x+.5,0,roach.position.z)');frames(1);}
+spraySetup();assert.equal(read('sprayAttack.phase'),'windup');assert.equal(read('sprayWarning.visible'),true);
+assert.match(element('#threat').textContent,/噴藥預警/);frames(49);assert.equal(read('hp'),100);
+frames(1);assert.equal(read('sprayAttack.phase'),'cloud');assert.equal(read('hp'),90);assert.equal(read('sprayCloud.visible'),true);
+frames(62);assert.equal(read('hp'),90,'no repeated per-frame damage');frames(1);assert.equal(read('hp'),80);
+element('#pause').onclick();const frozenSpray=read('JSON.stringify(sprayAttack)');frames(100);assert.equal(read('JSON.stringify(sprayAttack)'),frozenSpray);assert.equal(read('hp'),80);
+element('#pause').onclick();frames(125);assert.equal(read('sprayAttack.phase'),'recovery');assert.equal(read('sprayCloud.visible'),false);assert.equal(read('hp'),70);
+frames(100);assert.equal(read('hp'),70,'expired cloud cannot damage');
+spraySetup();const sprayTarget=read('JSON.stringify(sprayAttack.target)');read('roach.position.z-=2');frames(100);
+assert.equal(read('hp'),100);assert.equal(read('JSON.stringify(sprayAttack.target)'),sprayTarget,'cloud stays at warned position');
+element('#type').value='fly';spraySetup();element('#act').onclick();frames(51);assert.ok(read('roach.position.y')>.5);assert.equal(read('hp'),90,'low flight is vulnerable');
+for(let i=0;i<6;i++)element('#rise').onclick();frames(50);assert.ok(read('roach.position.y')>1.5);
+frames(100);assert.equal(read('hp'),90,'above cloud height avoids later ticks');
+element('#role').value='human';element('#role').onchange();frames(2);assert.equal(read('sprayCloud.visible'),false);assert.equal(read('sprayWarning.visible'),false);assert.equal(read('sprayAttack.phase'),'idle');
+element('#role').value='roach';element('#type').value='fast';spraySetup();frames(2000);assert.equal(read('hp'),0);assert.equal(read('end'),true);
+element('#reset').onclick();assert.equal(read('hp'),100);assert.equal(read('sprayAttack.phase'),'idle');assert.equal(read('sprayCloud.visible'),false);
+console.log('PASS: spray warning, damage interval, cloud expiry, pause, evade, low/high flight, role reset and loss.');
 console.log('PASS: chase warning marker, stopped windup, pause freeze, single damage, evade, flight height, loss and reset.');
 console.log('PASS: large food strength gate, carrying slowdown, ground-only pickup, drop/re-pickup, pause, all archetype collection/delivery victory, level 3, reset and role gating.');
 console.log('PASS: entire page startup/module exports, rendered loop, arrow movement, role/type handlers, takeoff/altitude/landing, camera drag, joystick/background reset, pause freeze/resume/background gating, human action and full restart. DOM/Three substitutes; no real WebGL rendering or mobile device test.');

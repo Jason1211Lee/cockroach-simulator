@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>蟑螂模擬器 · 午夜廚房</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#101916;color:#eef4df;font:16px system-ui}main{max-width:1100px;margin:auto;padding:16px}header{display:flex;align-items:center;justify-content:space-between;gap:12px}h1{font-size:24px;margin:0}small{color:#acc4ad}button{background:#d4f176;color:#17251b;border:0;border-radius:12px;min-width:48px;min-height:48px;padding:10px 16px;font:inherit;cursor:pointer}#hud{padding:12px 0;color:#d4f176;min-height:48px}#stage{position:relative}canvas{width:100%;display:block;background:#24312b;border:1px solid #526552;border-radius:16px;touch-action:none}#message{min-height:48px;padding:10px 0}#controls{display:flex;justify-content:space-between;align-items:center;padding:8px max(0px,env(safe-area-inset-right)) 8px max(0px,env(safe-area-inset-left));gap:12px}#stick{width:112px;height:112px;background:#293c30;border:2px solid #758c69;border-radius:50%;position:relative;touch-action:none;flex-shrink:0}#knob{width:44px;height:44px;background:#d4f176;border-radius:50%;position:absolute;left:32px;top:32px;pointer-events:none}.actions{display:flex;gap:8px;flex-wrap:wrap}.actions button{touch-action:none}p{line-height:1.6;color:#b9c8b7}.legend{font-size:14px}#rotate{display:none;color:#f4cc80}@media(orientation:portrait) and (max-width:700px){#rotate{display:block}h1{font-size:20px}main{padding:10px}}@media(orientation:landscape) and (max-height:600px){main{padding:6px 16px}h1{font-size:18px}#hud,#message{min-height:28px;padding:3px 0}.legend,small{display:none}canvas{max-height:58vh}#stick{width:88px;height:88px}#knob{left:20px;top:20px}#controls{padding:4px 0}}
+/* Keep the playfield proportional and touch controls visible on short screens. */
+canvas{object-fit:contain}
+@media(orientation:landscape) and (max-height:600px){
+main{display:grid;grid-template-columns:minmax(0,1fr) 170px;gap:4px 10px;padding-left:max(10px,env(safe-area-inset-left));padding-right:max(10px,env(safe-area-inset-right))}
+header,#hud,#message{grid-column:1/-1}#hud{font-size:12px}#message{font-size:13px}
+#stage{grid-column:1;grid-row:3}canvas{max-height:calc(100svh - 150px)}
+#controls{grid-column:2;grid-row:3;flex-direction:column;justify-content:center;gap:6px}.actions{justify-content:center;gap:4px}.actions button{font-size:13px;padding:6px;min-height:48px}#stick{width:76px;height:76px}#knob{left:14px;top:14px}
+}
+</style>
+<main><header><div><small>PROTOTYPE 0.1 / MIDNIGHT KITCHEN</small><h1>蟑螂模擬器 · 午夜廚房</h1></div><div><button id="pause">暫停</button> <button id="restart">重開</button></div></header>
+<div id="hud" role="status"></div><div id="rotate">建議將手機橫放，操作空間更大。</div><div id="stage"><canvas id="game" width="960" height="540" aria-label="俯視角廚房遊戲，操作說明位於下方"></canvas></div><div id="message" role="status" aria-live="polite"></div>
+<div id="controls"><div id="stick" aria-label="移動搖桿"><div id="knob"></div></div><div class="actions"><button data-action="interact">互動 E</button><button data-action="scare">驚嚇 Q</button><button data-action="fly">飛行 Space</button></div></div>
+<p class="legend">WASD／方向鍵移動 · E 拾取／交付 · Q 驚嚇 · Space 飛行 · P 暫停<br>帶回 3 份碎屑 → 嚇跑膽小人類 → 搬回大型食物 → 飛越矮櫃到星星，再返回綠色藏身處。藍色人類會逃跑、紅色會追打、紫色會噴藥。</p></main>
+<script>
+'use strict';
+const canvas=document.querySelector('#game'),ctx=canvas.getContext('2d');
+const hud=document.querySelector('#hud'),message=document.querySelector('#message');
+const walls=[{x:250,y:150,w:140,h:120},{x:510,y:80,w:80,h:190},{x:665,y:360,w:140,h:45,low:true}];
+const home={x:25,y:390,w:150,h:125},goal={x:730,y:438};
+const keys=new Set();let axis={x:0,y:0},stickId=null,state,last=0;
+const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+function say(t){message.textContent=t}
+function reset(){state={p:{x:90,y:450,hp:100,xp:0,level:1,carry:null,fly:0,cool:0,inv:0,angle:0},foods:[{id:1,x:210,y:335},{id:2,x:440,y:315},{id:3,x:425,y:100},{id:4,x:850,y:110,big:true}],npcs:[{x:450,y:410,type:'shy',color:'#80d3ed',t:0,mode:'patrol',lost:0,search:0,cool:0,spawn:{x:450,y:410}},{x:760,y:200,type:'chase',color:'#fa897d',t:0,mode:'patrol',lost:0,search:0,cool:0,spawn:{x:760,y:200}},{x:865,y:305,type:'spray',color:'#c4a2f5',t:0,mode:'patrol',lost:0,search:0,cool:0,spawn:{x:865,y:305}}],hazards:[],delivered:0,scared:false,big:false,flown:false,paused:false,end:null,time:0};clearInput();document.querySelector('#pause').textContent='暫停';say('從藏身處出發！靠近黃色食物按「互動」。');render()}
+function inside(p,r,pad=0){return p.x>r.x-pad&&p.x<r.x+r.w+pad&&p.y>r.y-pad&&p.y<r.y+r.h+pad}
+function safe(){return inside(state.p,home)}
+function blocked(x,y,r=11,flying=false){return x<r||y<r||x>960-r||y>540-r||walls.some(w=>!(flying&&w.low)&&inside({x,y},w,r))}
+function move(p,dx,dy,fly=false,r=11){const count=Math.max(1,Math.ceil(Math.hypot(dx,dy)/5));for(let i=0;i<count;i++){if(!blocked(p.x+dx/count,p.y,r,fly))p.x+=dx/count;if(!blocked(p.x,p.y+dy/count,r,fly))p.y+=dy/count}}
+function visible(a,b){const d=distance(a,b);for(let i=0;i<=d;i+=5){const t=d?i/d:0;if(walls.some(w=>inside({x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t},w)))return false}return true}
+function gain(n){const p=state.p;p.xp+=n;const before=p.level;p.level=p.xp>=80?3:p.xp>=30?2:1;if(p.level>before)say(p.level===3?'等級 3！飛行已解鎖，前往矮櫃後方的星星。':'等級 2！速度提升，現在能搬大型食物。')}
+function hurt(n){const p=state.p;if(safe()||p.inv>0||state.end)return;p.hp=Math.max(0,p.hp-n);p.inv=.7;if(!p.hp){state.end='lose';say('被人類發現了！按「重開」再試一次。')}}
+function action(name){if(state.paused||state.end)return;const p=state.p;if(name==='interact'){if(p.carry){if(safe()){const food=p.carry;p.carry=null;if(food.big){state.big=true;gain(30);say('大型食物已交付！獲得 30 經驗。')}else{state.delivered++;gain(10);say('碎屑已交付！獲得 10 經驗。')}}else say('把食物帶回左下角綠色藏身處。')}else{const f=state.foods.find(f=>distance(p,f)<36);if(!f){say('靠近食物後再互動。');return}if(f.big&&p.level<2){say('力量不足，需要等級 2。');return}p.carry=f;state.foods=state.foods.filter(x=>x.id!==f.id);say('已拾取，返回藏身處按「互動」交付。')}}
+if(name==='scare'){const n=state.npcs.find(n=>n.type==='shy'&&distance(n,p)<105&&visible(n,p));if(n){n.mode='react';n.lost=0;n.fear=3;if(!state.scared){state.scared=true;gain(20);say('驚嚇成功！獲得 20 經驗。')}else say('膽小人類又被嚇跑了。')}else say('靠近藍色人類，距離 105 以內且沒有遮擋才能驚嚇。')}
+if(name==='fly'){if(p.level<3){say('飛行需要等級 3（80 經驗）。');return}if(p.cool>0||p.fly>0){say('飛行還在冷卻。');return}p.takeoff={x:p.x,y:p.y};p.fly=2;p.cool=7;say('飛行中！可越過矮櫃，但不能穿牆或免疫毒霧。')}}
+function pause(){if(state.end)return;state.paused=!state.paused;clearInput();document.querySelector('#pause').textContent=state.paused?'繼續':'暫停';say(state.paused?'已暫停。':'繼續探索。')}
+function update(dt){if(state.paused||state.end)return;state.time+=dt;const p=state.p;p.inv=Math.max(0,p.inv-dt);p.cool=Math.max(0,p.cool-dt);if(p.fly>0){p.fly-=dt;if(p.fly<=0){p.fly=0;if(blocked(p.x,p.y))Object.assign(p,p.takeoff)}}
+let x=axis.x+(keys.has('d')||keys.has('arrowright')?1:0)-(keys.has('a')||keys.has('arrowleft')?1:0),y=axis.y+(keys.has('s')||keys.has('arrowdown')?1:0)-(keys.has('w')||keys.has('arrowup')?1:0);const len=Math.hypot(x,y);if(len>1){x/=len;y/=len}if(len>.05)p.angle=Math.atan2(y,x);const speed=150*(p.level>=2?1.1:1)*(p.carry?.big?.8:1)*(p.fly>0?1.3:1);move(p,x*speed*dt,y*speed*dt,p.fly>0);
+if(p.fly>0&&distance(p,goal)<30&&!state.flown){state.flown=true;say('已完成飛行探索！完成其他任務後返回藏身處。')}
+for(const n of state.npcs){n.t+=dt;n.cool=Math.max(0,n.cool-dt);n.fear=Math.max(0,(n.fear||0)-dt);const sees=!safe()&&distance(n,p)<210&&visible(n,p);if(sees||n.fear>0){n.mode='react';n.lost=0}else if(n.mode==='react'){n.lost+=dt;if(n.lost>2){n.mode='search';n.search=3}}else if(n.mode==='search'){n.search-=dt;if(n.search<=0)n.mode='patrol'}
+let target=n.spawn,rate=45;if(n.mode==='react'){target=p;rate=n.type==='shy'?-115:75}else if(n.mode==='patrol'){target={x:n.spawn.x+Math.cos(n.t*.7)*55,y:n.spawn.y+Math.sin(n.t*.7)*55}}else rate=0;
+if(n.attack){n.attack.left-=dt;if(n.attack.left<=0){const a=n.attack;if(n.type==='chase'){if(p.fly<=0&&distance(p,a)<45)hurt(25)}else state.hazards.push({x:a.x,y:a.y,left:3,tick:0});n.attack=null;n.cool=n.type==='chase'?1.5:4}}else if(sees&&n.cool===0&&((n.type==='chase'&&distance(n,p)<65)||(n.type==='spray'&&distance(n,p)<160))){n.attack={x:p.x,y:p.y,left:n.type==='chase'?.6:.8};rate=0}
+if(n.attack)rate=0;const d=distance(n,target);if(d>5)move(n,(target.x-n.x)/d*rate*dt,(target.y-n.y)/d*rate*dt,false,16)}
+for(const h of state.hazards){h.left-=dt;h.tick-=dt;if(h.left>0&&h.tick<=0&&distance(p,h)<60){hurt(12);h.tick=1}}state.hazards=state.hazards.filter(h=>h.left>0);
+if(!state.end&&state.delivered===3&&state.scared&&state.big&&state.flown&&safe()){state.end='win';say('午夜廚房制霸！全部任務完成。按「重開」可再玩一局。')}}
+function rect(r,c){ctx.fillStyle=c;ctx.fillRect(r.x,r.y,r.w,r.h)}
+function circle(x,y,r,c){ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle=c;ctx.fill()}
+function label(t,x,y,c='#edf4dc'){ctx.fillStyle=c;ctx.font='15px system-ui';ctx.fillText(t,x,y)}
+function render(){const p=state.p;ctx.clearRect(0,0,960,540);for(let x=0;x<960;x+=60)for(let y=0;y<540;y+=60){ctx.strokeStyle='#304036';ctx.strokeRect(x,y,60,60)}rect(home,'#385b3d');label('藏身處 / 交付',40,420);walls.forEach(w=>{rect(w,w.low?'#8a7552':'#526256');label(w.low?'矮櫃（可飛越）':'廚房櫃',w.x+7,w.y+26)});circle(goal.x,goal.y,20,state.flown?'#548462':'#a3b8a4');label('★',goal.x-8,goal.y+6);
+for(const f of state.foods){circle(f.x,f.y,f.big?17:9,'#f2cc75');label(f.big?'大型食物':'碎屑',f.x-25,f.y-22)}
+for(const h of state.hazards){ctx.globalAlpha=.35;circle(h.x,h.y,60,'#d4a3ee');ctx.globalAlpha=1;label('毒霧',h.x-17,h.y)}
+for(const n of state.npcs){if(n.attack){ctx.globalAlpha=.45;circle(n.attack.x,n.attack.y,n.type==='chase'?45:60,'#fcaa72');ctx.globalAlpha=1}circle(n.x,n.y,17,n.color);label(n.type==='shy'?'膽小':n.type==='chase'?'追打':'噴藥',n.x-16,n.y-25)}
+ctx.save();ctx.translate(p.x,p.y);if(p.fly>0){circle(4,7,15,'#101916');ctx.scale(1.3,1.3)}ctx.rotate(p.angle);ctx.strokeStyle='#d4f176';ctx.lineWidth=2;for(let i=-1;i<=1;i++){ctx.beginPath();ctx.moveTo(i*7,-6);ctx.lineTo(i*7-5,-15);ctx.moveTo(i*7,6);ctx.lineTo(i*7-5,15);ctx.stroke()}ctx.globalAlpha=p.inv>0?.5:1;ctx.fillStyle='#b7854b';ctx.beginPath();ctx.ellipse(0,0,14,8,0,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.moveTo(10,-4);ctx.lineTo(23,-11);ctx.moveTo(10,4);ctx.lineTo(23,11);ctx.stroke();ctx.restore();if(p.carry)circle(p.x-18,p.y-17,7,'#f2cc75');
+hud.textContent=`生命 ${Math.ceil(p.hp)} · Lv.${p.level} · XP ${p.xp} · 食物 ${state.delivered}/3 · 驚嚇 ${state.scared?'✓':'—'} · 大食物 ${state.big?'✓':'—'} · 飛行任務 ${state.flown?'✓':'—'} · 飛行 ${p.level<3?'未解鎖':p.fly>0?'進行中':p.cool>0?Math.ceil(p.cool)+'s':'就緒'}`;
+if(state.paused||state.end){ctx.fillStyle='#101916bb';ctx.fillRect(0,0,960,540);ctx.textAlign='center';ctx.font='bold 40px system-ui';ctx.fillStyle='#d4f176';ctx.fillText(state.end==='win'?'任務全部完成！':state.end==='lose'?'挑戰失敗':'已暫停',480,270);ctx.textAlign='left'}}
+function clearInput(){keys.clear();axis={x:0,y:0};stickId=null;document.querySelector('#knob').style.transform='translate(0px,0px)'}
+const stick=document.querySelector('#stick');function stickMove(e){if(e.pointerId!==stickId)return;const r=stick.getBoundingClientRect(),dx=e.clientX-r.left-r.width/2,dy=e.clientY-r.top-r.height/2,d=Math.hypot(dx,dy),m=r.width*.32;axis={x:dx/Math.max(m,d),y:dy/Math.max(m,d)};document.querySelector('#knob').style.transform=`translate(${axis.x*m}px,${axis.y*m}px)`}
+stick.addEventListener('pointerdown',e=>{if(stickId!==null)return;stickId=e.pointerId;stick.setPointerCapture(e.pointerId);stickMove(e)});stick.addEventListener('pointermove',stickMove);for(const ev of ['pointerup','pointercancel','lostpointercapture'])stick.addEventListener(ev,e=>{if(e.pointerId===stickId)clearInput()});
+document.querySelectorAll('[data-action]').forEach(b=>b.addEventListener('click',()=>action(b.dataset.action)));document.querySelector('#pause').onclick=pause;document.querySelector('#restart').onclick=reset;
+addEventListener('keydown',e=>{const k=e.key.toLowerCase();if([' ','arrowup','arrowdown','arrowleft','arrowright'].includes(k))e.preventDefault();keys.add(k);if(!e.repeat){if(k==='e')action('interact');if(k==='q')action('scare');if(k===' ')action('fly');if(k==='p')pause()}});addEventListener('keyup',e=>keys.delete(e.key.toLowerCase()));addEventListener('blur',()=>{clearInput();if(!state.paused&&!state.end)pause()});document.addEventListener('visibilitychange',()=>{if(document.hidden){clearInput();if(!state.paused&&!state.end)pause()}});addEventListener('resize',clearInput);
+function loop(t){const dt=Math.min(.04,(t-last)/1000||0);last=t;update(dt);render();requestAnimationFrame(loop)}reset();requestAnimationFrame(loop);
+</script></html>

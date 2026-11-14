@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {adjustAltitude,flightHeight} from './flight-controls.mjs';
+assert.equal(adjustAltitude(.8,.25),1.05);
+assert.equal(adjustAltitude(.8,-.25),.55);
+assert.equal(adjustAltitude(2.1,.25),2.2);
+assert.equal(adjustAltitude(.3,-.25),.25);
+assert.equal(flightHeight(0,1.5),0);
+assert.equal(flightHeight(-1,1.5),0);
+assert.equal(flightHeight(3,1.5),1.5);
+console.log('PASS: ascent, descent, upper/lower bounds, expired flight landing target, active flight height.');

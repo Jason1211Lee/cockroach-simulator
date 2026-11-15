@@ -150,6 +150,38 @@ frames(100);assert.equal(read('hp'),90,'above cloud height avoids later ticks');
 element('#role').value='human';element('#role').onchange();frames(2);assert.equal(read('sprayCloud.visible'),false);assert.equal(read('sprayWarning.visible'),false);assert.equal(read('sprayAttack.phase'),'idle');
 element('#role').value='roach';element('#type').value='fast';spraySetup();frames(2000);assert.equal(read('hp'),0);assert.equal(read('end'),true);
 element('#reset').onclick();assert.equal(read('hp'),100);assert.equal(read('sprayAttack.phase'),'idle');assert.equal(read('sprayCloud.visible'),false);
+
+element('#role').value='roach';element('#type').value='fast';
+for(const mood of ['shy','chase','spray']){
+ element('#mood').value=mood;element('#reset').onclick();
+ read('human.position.set(0,0,-1.1);roach.position.set(0,0,1.1)');
+ const hiddenHuman=read('JSON.stringify(human.position)');frames(150);
+ assert.equal(read('humanCanSee(human.position,roach.position,cameraBoxes)'),false);
+ assert.equal(read('JSON.stringify(human.position)'),hiddenHuman,'cabinet blocks NPC movement for '+mood);
+ assert.equal(read('sprayAttack.phase'),'idle');assert.equal(read('chaseAttack.phase'),'idle');assert.equal(read('hp'),100);
+}
+function addTestScreen(){read('cameraBoxes.push({min:{x:-3.8,y:0,z:2.8},max:{x:-3.7,y:2,z:3.2}})');}
+element('#mood').value='chase';chaseSetup();
+addTestScreen();frames(40);assert.equal(read('hp'),100,'screen blocks an already locked ground strike');
+read('cameraBoxes.pop()');
+for(const mood of ['chase','spray','shy']){
+ element('#mood').value=mood;element('#reset').onclick();
+ read('human.position.set(roach.position.x+.5,0,roach.position.z)');addTestScreen();frames(80);
+ assert.equal(read('chaseAttack.phase'),'idle');assert.equal(read('sprayAttack.phase'),'idle');
+ element('#scare').onclick();assert.equal(read('progress.xp'),0,'cannot scare through a screen');
+ read('cameraBoxes.pop()');frames(1);
+ if(mood==='chase')assert.equal(read('chaseAttack.phase'),'windup');
+ if(mood==='spray')assert.equal(read('sprayAttack.phase'),'windup');
+ if(mood==='shy'){element('#scare').onclick();assert.equal(read('progress.xp'),20,'visible scare works again');}
+}
+element('#role').value='human';element('#reset').onclick();
+read('human.position.set(-3.5,0,3);roach.position.set(-4,0,3)');addTestScreen();
+element('#act').onclick();assert.equal(read('score'),0);assert.match(element('#feedback').textContent,/家具/);
+read('cameraBoxes.pop()');element('#act').onclick();assert.equal(read('score'),1);
+element('#role').value='roach';element('#mood').value='spray';spraySetup();frames(50);
+const cloudLifetime=read('sprayAttack.remaining');addTestScreen();frames(10);
+assert.ok(read('sprayAttack.remaining')<cloudLifetime,'existing cloud keeps expiring without sight');read('cameraBoxes.pop()');
+console.log('PASS: actual cabinet NPC blocking, screened attack/scare/human action, restored sight and independent cloud lifetime.');
 console.log('PASS: spray warning, damage interval, cloud expiry, pause, evade, low/high flight, role reset and loss.');
 console.log('PASS: chase warning marker, stopped windup, pause freeze, single damage, evade, flight height, loss and reset.');
 console.log('PASS: large food strength gate, carrying slowdown, ground-only pickup, drop/re-pickup, pause, all archetype collection/delivery victory, level 3, reset and role gating.');

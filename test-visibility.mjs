@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import {hasLineOfSight,humanCanSee} from './visibility.mjs';
+const cabinet={min:{x:-1,y:0,z:-.75},max:{x:1,y:1.18,z:.75}};
+assert.equal(humanCanSee({x:0,y:0,z:-1.1},{x:0,y:0,z:1.1},[cabinet]),false);
+assert.equal(humanCanSee({x:0,y:0,z:-1.1},{x:0,y:2,z:1.1},[cabinet]),true);
+assert.equal(humanCanSee({x:2,y:0,z:-1.1},{x:2,y:0,z:1.1},[cabinet]),true);
+const table={min:{x:-1,y:.9,z:1.6},max:{x:1,y:1,z:3}};
+assert.equal(humanCanSee({x:0,y:0,z:2.3},{x:.6,y:0,z:2.3},[table]),false);
+assert.equal(hasLineOfSight({x:0,y:.5,z:2.3},{x:.6,y:.08,z:2.3},[table]),true,'space below table is not treated as solid');
+assert.equal(hasLineOfSight({x:0,y:0,z:0},{x:1,y:0,z:0},[]),true);
+assert.equal(hasLineOfSight({x:0,y:0,z:0},{x:1,y:0,z:0},[{min:{x:2,y:-1,z:-1},max:{x:3,y:1,z:1}}]),true,'blocker beyond target ignored');
+console.log('PASS: cabinet occlusion, height and side clearance, tabletop, under-table gap, clear view and finite segment.');

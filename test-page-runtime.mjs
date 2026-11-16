@@ -117,7 +117,7 @@ assert.equal(read('progress.xp'),60);assert.equal(read('end'),true,'no scare req
 element('#role').value='human';element('#role').onchange();read('roach.position.set(largeFood.position.x,0,largeFood.position.z)');element('#carry').onclick();assert.equal(read('carrying'),false,'human cannot use roach delivery');
 
 element('#role').value='roach';element('#type').value='fast';element('#mood').value='chase';
-function chaseSetup(){element('#reset').onclick();read('human.position.set(roach.position.x+.5,0,roach.position.z)');frames(1);}
+function chaseSetup(){element('#reset').onclick();read('roach.position.set(-4,0,1)');read('human.position.set(roach.position.x+.5,0,roach.position.z)');frames(1);}
 chaseSetup();assert.equal(read('chaseAttack.phase'),'windup');assert.equal(read('hp'),100);assert.equal(read('attackMarker.visible'),true);
 assert.match(element('#threat').textContent,/拖鞋預警/);
 const attackPosition=read('JSON.stringify(human.position)');frames(20);assert.equal(read('hp'),100);
@@ -134,7 +134,7 @@ element('#type').value='fast';chaseSetup();frames(800);assert.equal(read('hp'),0
 element('#reset').onclick();assert.equal(read('chaseAttack.phase'),'idle');assert.equal(read('attackMarker.visible'),false);assert.equal(read('hp'),100);
 
 element('#mood').value='spray';element('#type').value='fast';
-function spraySetup(){element('#reset').onclick();read('human.position.set(roach.position.x+.5,0,roach.position.z)');frames(1);}
+function spraySetup(){element('#reset').onclick();read('roach.position.set(-4,0,1)');read('human.position.set(roach.position.x+.5,0,roach.position.z)');frames(1);}
 spraySetup();assert.equal(read('sprayAttack.phase'),'windup');assert.equal(read('sprayWarning.visible'),true);
 assert.match(element('#threat').textContent,/噴藥預警/);frames(49);assert.equal(read('hp'),100);
 frames(1);assert.equal(read('sprayAttack.phase'),'cloud');assert.equal(read('hp'),90);assert.equal(read('sprayCloud.visible'),true);
@@ -160,12 +160,12 @@ for(const mood of ['shy','chase','spray']){
  assert.equal(read('JSON.stringify(human.position)'),hiddenHuman,'cabinet blocks NPC movement for '+mood);
  assert.equal(read('sprayAttack.phase'),'idle');assert.equal(read('chaseAttack.phase'),'idle');assert.equal(read('hp'),100);
 }
-function addTestScreen(){read('cameraBoxes.push({min:{x:-3.8,y:0,z:2.8},max:{x:-3.7,y:2,z:3.2}})');}
+function addTestScreen(){read('cameraBoxes.push({min:{x:-3.8,y:0,z:roach.position.z-.2},max:{x:-3.7,y:2,z:roach.position.z+.2}})');}
 element('#mood').value='chase';chaseSetup();
 addTestScreen();frames(40);assert.equal(read('hp'),100,'screen blocks an already locked ground strike');
 read('cameraBoxes.pop()');
 for(const mood of ['chase','spray','shy']){
- element('#mood').value=mood;element('#reset').onclick();
+ element('#mood').value=mood;element('#reset').onclick();read('roach.position.set(-4,0,1)');
  read('human.position.set(roach.position.x+.5,0,roach.position.z)');addTestScreen();frames(80);
  assert.equal(read('chaseAttack.phase'),'idle');assert.equal(read('sprayAttack.phase'),'idle');
  element('#scare').onclick();assert.equal(read('progress.xp'),0,'cannot scare through a screen');
@@ -181,6 +181,30 @@ read('cameraBoxes.pop()');element('#act').onclick();assert.equal(read('score'),1
 element('#role').value='roach';element('#mood').value='spray';spraySetup();frames(50);
 const cloudLifetime=read('sprayAttack.remaining');addTestScreen();frames(10);
 assert.ok(read('sprayAttack.remaining')<cloudLifetime,'existing cloud keeps expiring without sight');read('cameraBoxes.pop()');
+
+element('#role').value='roach';element('#type').value='fast';
+for(const mood of ['chase','spray']){
+ element('#mood').value=mood;element('#reset').onclick();
+ read('human.position.set(roach.position.x+.5,0,roach.position.z)');const refugeHuman=read('JSON.stringify(human.position)');
+ frames(200);assert.equal(read('hp'),100);assert.equal(read('chaseAttack.phase'),'idle');assert.equal(read('sprayAttack.phase'),'idle');
+ assert.equal(read('JSON.stringify(human.position)'),refugeHuman);assert.match(element('#status').textContent,/安全區/);
+}
+element('#mood').value='chase';element('#reset').onclick();
+read('roach.position.set(-4,0,2.35);human.position.set(-3.5,0,2.35)');frames(1);
+assert.equal(read('chaseAttack.phase'),'windup');read('roach.position.z=2.5');frames(38);
+assert.equal(read('hp'),100,'returning to refuge blocks a pending strike');
+frames(100);assert.equal(read('chaseAttack.phase'),'idle','pending attack still recovers in refuge');
+read('roach.position.z=2.35');frames(39);assert.equal(read('hp'),80,'leaving refuge restores chase damage');
+element('#mood').value='spray';element('#reset').onclick();
+read('roach.position.set(-4,0,2.35);human.position.set(-3.5,0,2.35)');frames(51);assert.equal(read('hp'),90);
+read('roach.position.z=2.5');const cloudTimeAtEntry=read('sprayAttack.remaining');frames(63);
+assert.equal(read('hp'),90,'overlapping cloud does not hurt inside refuge');assert.ok(read('sprayAttack.remaining')<cloudTimeAtEntry);
+read('roach.position.z=2.35');frames(63);assert.equal(read('hp'),80,'remaining cloud hurts again outside refuge');
+frames(70);assert.equal(read('sprayAttack.phase'),'recovery');
+element('#type').value='fly';element('#reset').onclick();read('human.position.set(-3.5,0,3)');
+element('#act').onclick();frames(70);assert.ok(read('roach.position.y')>.2);assert.equal(read('hp'),90,'flight above pad is not safe');
+element('#reset').onclick();frames(1);assert.equal(read('hp'),100);assert.match(element('#status').textContent,/安全區/);
+console.log('PASS: refuge blocks detection and damage, pending strike and cloud timers continue, exit restores damage, airborne pad and restart.');
 console.log('PASS: actual cabinet NPC blocking, screened attack/scare/human action, restored sight and independent cloud lifetime.');
 console.log('PASS: spray warning, damage interval, cloud expiry, pause, evade, low/high flight, role reset and loss.');
 console.log('PASS: chase warning marker, stopped windup, pause freeze, single damage, evade, flight height, loss and reset.');

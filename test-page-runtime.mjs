@@ -204,6 +204,27 @@ frames(70);assert.equal(read('sprayAttack.phase'),'recovery');
 element('#type').value='fly';element('#reset').onclick();read('human.position.set(-3.5,0,3)');
 element('#act').onclick();frames(70);assert.ok(read('roach.position.y')>.2);assert.equal(read('hp'),90,'flight above pad is not safe');
 element('#reset').onclick();frames(1);assert.equal(read('hp'),100);assert.match(element('#status').textContent,/安全區/);
+
+element('#role').value='human';element('#reset').onclick();assert.equal(read('huntRemaining'),120);
+frames(100);assert.ok(Math.abs(read('huntRemaining')-118.4)<1e-9);assert.match(element('#status').textContent,/剩餘 119 秒/);
+element('#pause').onclick();const pausedHunt=read('huntRemaining');frames(200);assert.equal(read('huntRemaining'),pausedHunt);
+element('#pause').onclick();event('blur');frames(100);assert.equal(read('huntRemaining'),pausedHunt,'blur pauses human clock');
+element('#pause').onclick();frames(1);assert.ok(read('huntRemaining')<pausedHunt);
+element('#reset').onclick();frames(7499);assert.equal(read('end'),false,'not before 120 seconds');frames(1);
+assert.equal(read('huntRemaining'),0);assert.equal(read('end'),true);assert.match(element('#status').textContent,/搜尋超時.*失敗/);
+const lostScore=read('score'),lostPositions=read('JSON.stringify([human.position,roach.position])');
+element('#act').onclick();event('keydown',{key:'w',code:'KeyW'});frames(10);event('keyup',{key:'w'});
+assert.equal(read('score'),lostScore);assert.equal(read('JSON.stringify([human.position,roach.position])'),lostPositions,'timeout freezes actors');
+element('#reset').onclick();assert.equal(read('end'),false);assert.equal(read('huntRemaining'),120);
+for(let i=0;i<3;i++){
+ read('roach.position.set(human.position.x,0,human.position.z)');element('#act').onclick();
+ if(i<2)frames(63);
+}
+assert.equal(read('score'),3);assert.equal(read('end'),true);
+const wonTime=read('huntRemaining');frames(8000);assert.equal(read('huntRemaining'),wonTime);assert.match(element('#status').textContent,/任務完成/);
+element('#role').value='roach';element('#role').onchange();frames(100);assert.equal(read('huntRemaining'),120,'roach mode has no human time limit');
+element('#role').value='human';element('#role').onchange();assert.equal(read('huntRemaining'),120);assert.equal(read('score'),0);
+console.log('PASS: human 120s boundary, pause/blur freeze, timeout loss, frozen actors/actions, restart, victory freeze and role reset.');
 console.log('PASS: refuge blocks detection and damage, pending strike and cloud timers continue, exit restores damage, airborne pad and restart.');
 console.log('PASS: actual cabinet NPC blocking, screened attack/scare/human action, restored sight and independent cloud lifetime.');
 console.log('PASS: spray warning, damage interval, cloud expiry, pause, evade, low/high flight, role reset and loss.');

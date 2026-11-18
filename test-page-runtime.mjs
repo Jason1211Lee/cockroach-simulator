@@ -13,8 +13,9 @@ const T=new Proxy({Vector3:Vector,WebGLRenderer:Renderer,MathUtils:{damp:(a,b,k,
 let code=html.split('<script type="module">')[1].split('</script>')[0];const globals={T};
 for(const m of code.matchAll(/import \{([^}]+)\} from '([^']+)';/g)){const exports=await import(new URL(m[2],import.meta.url));for(const name of m[1].split(',').map(v=>v.trim())){assert.ok(exports[name]!==undefined,name+' export missing');globals[name]=exports[name]}}
 code=code.replace(/^import .*;$/gm,'');
-const c=vm.createContext({...globals,document,innerWidth:844,innerHeight:390,devicePixelRatio:2,performance:{now:()=>0},requestAnimationFrame:f=>scheduled=f,addEventListener(k,f){(events[k]??=[]).push(f)},console});
-vm.runInContext(code,c);const read=s=>vm.runInContext(s,c);let now=0;
+let now=0;
+const c=vm.createContext({...globals,document,innerWidth:844,innerHeight:390,devicePixelRatio:2,performance:{now:()=>now},requestAnimationFrame:f=>scheduled=f,addEventListener(k,f){(events[k]??=[]).push(f)},console});
+vm.runInContext(code,c);const read=s=>vm.runInContext(s,c);
 function frames(n){for(let i=0;i<n;i++){now+=16;scheduled(now)}}
 function event(k,e={}){for(const fn of events[k]??[])fn(e)}
 assert.equal(read('hp'),100);assert.equal(read('foods.length'),3);assert.ok(scheduled);
@@ -224,6 +225,24 @@ assert.equal(read('score'),3);assert.equal(read('end'),true);
 const wonTime=read('huntRemaining');frames(8000);assert.equal(read('huntRemaining'),wonTime);assert.match(element('#status').textContent,/任務完成/);
 element('#role').value='roach';element('#role').onchange();frames(100);assert.equal(read('huntRemaining'),120,'roach mode has no human time limit');
 element('#role').value='human';element('#role').onchange();assert.equal(read('huntRemaining'),120);assert.equal(read('score'),0);
+
+function slowFrame(ms){now+=ms;scheduled(now);}
+element('#reset').onclick();
+for(let i=0;i<1199;i++)slowFrame(100);
+assert.ok(Math.abs(read('huntRemaining')-.1)<1e-8);assert.equal(read('end'),false);
+slowFrame(100);assert.equal(read('huntRemaining'),0);assert.equal(read('end'),true,'10 FPS still expires at 120 real seconds');
+element('#reset').onclick();const stalledPosition=read('JSON.stringify([human.position,roach.position])');
+slowFrame(121000);assert.equal(read('end'),true);assert.equal(read('JSON.stringify([human.position,roach.position])'),stalledPosition,'long active stall expires before actor update');
+element('#reset').onclick();now+=20;element('#pause').onclick();
+assert.ok(Math.abs(read('huntRemaining')-119.98)<1e-8,'pause accounts for active time since previous frame');
+const exactPausedTime=read('huntRemaining');now+=60000;element('#pause').onclick();slowFrame(100);
+assert.ok(Math.abs(read('huntRemaining')-(exactPausedTime-.1))<1e-8,'paused minute excluded even without frames');
+element('#reset').onclick();now+=120000;
+read('roach.position.set(human.position.x,0,human.position.z)');element('#act').onclick();
+assert.equal(read('score'),0);assert.equal(read('end'),true,'cannot score after deadline before next render');
+now+=5000;element('#reset').onclick();slowFrame(100);assert.ok(Math.abs(read('huntRemaining')-119.9)<1e-8,'reset starts a new clock');
+read('syncHunt(huntLast-50)');slowFrame(100);assert.ok(Math.abs(read('huntRemaining')-119.8)<1e-8,'older frame timestamp cannot rewind clock');
+console.log('PASS: real elapsed time at 10 FPS, long active stall, pause/resume between frames, input deadline and reset timestamp.');
 console.log('PASS: human 120s boundary, pause/blur freeze, timeout loss, frozen actors/actions, restart, victory freeze and role reset.');
 console.log('PASS: refuge blocks detection and damage, pending strike and cloud timers continue, exit restores damage, airborne pad and restart.');
 console.log('PASS: actual cabinet NPC blocking, screened attack/scare/human action, restored sight and independent cloud lifetime.');

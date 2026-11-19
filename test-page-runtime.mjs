@@ -14,7 +14,8 @@ let code=html.split('<script type="module">')[1].split('</script>')[0];const glo
 for(const m of code.matchAll(/import \{([^}]+)\} from '([^']+)';/g)){const exports=await import(new URL(m[2],import.meta.url));for(const name of m[1].split(',').map(v=>v.trim())){assert.ok(exports[name]!==undefined,name+' export missing');globals[name]=exports[name]}}
 code=code.replace(/^import .*;$/gm,'');
 let now=0;
-const c=vm.createContext({...globals,document,innerWidth:844,innerHeight:390,devicePixelRatio:2,performance:{now:()=>now},requestAnimationFrame:f=>scheduled=f,addEventListener(k,f){(events[k]??=[]).push(f)},console});
+const bootCalls={ready:0,failed:[]};
+const c=vm.createContext({gameBoot:{ready(){bootCalls.ready++},fail(text){bootCalls.failed.push(text)}},...globals,document,innerWidth:844,innerHeight:390,devicePixelRatio:2,performance:{now:()=>now},requestAnimationFrame:f=>scheduled=f,addEventListener(k,f){(events[k]??=[]).push(f)},console});
 vm.runInContext(code,c);const read=s=>vm.runInContext(s,c);
 function frames(n){for(let i=0;i<n;i++){now+=16;scheduled(now)}}
 function event(k,e={}){for(const fn of events[k]??[])fn(e)}
@@ -242,6 +243,11 @@ read('roach.position.set(human.position.x,0,human.position.z)');element('#act').
 assert.equal(read('score'),0);assert.equal(read('end'),true,'cannot score after deadline before next render');
 now+=5000;element('#reset').onclick();slowFrame(100);assert.ok(Math.abs(read('huntRemaining')-119.9)<1e-8,'reset starts a new clock');
 read('syncHunt(huntLast-50)');slowFrame(100);assert.ok(Math.abs(read('huntRemaining')-119.8)<1e-8,'older frame timestamp cannot rewind clock');
+
+assert.equal(bootCalls.ready,1,'boot ready signaled once, after first successful renderer call');
+let lossPrevented=false;element('canvas').fire('webglcontextlost',{preventDefault(){lossPrevented=true}});
+assert.equal(lossPrevented,true);assert.equal(read('paused'),true);assert.match(bootCalls.failed.at(-1),/繪圖連線已中斷/);
+console.log('PASS: first rendered frame readiness and WebGL context-loss pause/failure signal.');
 console.log('PASS: real elapsed time at 10 FPS, long active stall, pause/resume between frames, input deadline and reset timestamp.');
 console.log('PASS: human 120s boundary, pause/blur freeze, timeout loss, frozen actors/actions, restart, victory freeze and role reset.');
 console.log('PASS: refuge blocks detection and damage, pending strike and cloud timers continue, exit restores damage, airborne pad and restart.');

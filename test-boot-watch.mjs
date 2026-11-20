@@ -9,10 +9,10 @@ function setup(){
  vm.runInContext(script,c);return {nodes,events,c,timeout,counts:()=>({reloads,cleared})};
 }
 let x=setup();x.c.gameBoot.ready();assert.equal(x.nodes['#boot-panel'].hidden,true);assert.ok(x.counts().cleared>0);
-x.events.error();assert.equal(x.nodes['#boot-panel'].hidden,false);assert.match(x.nodes['#boot-message'].textContent,/失敗/);
-x=setup();x.timeout();assert.equal(x.nodes['#boot-panel'].hidden,false);assert.match(x.nodes['#boot-message'].textContent,/尚未完成載入/);
+let stopped=0;x.c.gameBoot.onFailure=()=>stopped++;x.events.error();assert.equal(stopped,1);assert.equal(x.c.gameBoot.isFatal(),true);x.c.gameBoot.ready();assert.equal(x.nodes['#boot-panel'].hidden,false);assert.match(x.nodes['#boot-message'].textContent,/失敗/);
+x=setup();let timeoutStops=0;x.c.gameBoot.onFailure=()=>timeoutStops++;x.timeout();assert.equal(timeoutStops,0,'slow loading notice is recoverable');assert.equal(x.c.gameBoot.isFatal(),false);assert.equal(x.nodes['#boot-panel'].hidden,false);assert.match(x.nodes['#boot-message'].textContent,/尚未完成載入/);
 x.c.gameBoot.ready();assert.equal(x.nodes['#boot-panel'].hidden,true,'late successful render dismisses timeout notice');
-x=setup();x.events.unhandledrejection();assert.match(x.nodes['#boot-message'].textContent,/模組/);
+x=setup();let rejectedStops=0;x.c.gameBoot.onFailure=()=>rejectedStops++;x.events.unhandledrejection();assert.equal(rejectedStops,1);x.c.gameBoot.ready();assert.equal(x.nodes['#boot-panel'].hidden,false,'fatal rejection cannot be hidden by late ready');assert.match(x.nodes['#boot-message'].textContent,/模組/);
 x.nodes['#retry-3d'].onclick();assert.equal(x.counts().reloads,1);
 assert.match(html,/<a href="index.html"[^>]*>開啟 2D 備用版/);
 assert.match(html,/#boot-panel\[hidden\]\{display:none\}/);

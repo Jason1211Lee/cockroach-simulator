@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import assert from 'node:assert/strict';
 const html=fs.readFileSync(new URL('./3d.html',import.meta.url),'utf8');
-const events={},elements=new Map();let renders=0,scheduled;
+const events={},elements=new Map();let renders=0,scheduled,requests=0;
 function element(id){if(!elements.has(id))elements.set(id,{value:id==='#role'?'roach':id==='#type'?'fast':'shy',textContent:'',style:{},handlers:{},addEventListener(k,f){(this.handlers[k]??=[]).push(f)},setPointerCapture(){},getBoundingClientRect(){return {left:0,top:0,width:120,height:120}},fire(k,e){for(const f of this.handlers[k]??[])f(e);this['on'+k]?.(e)}});return elements.get(id)}
 const ids=[...html.matchAll(/id="([^"]+)"/g)].map(m=>m[1]);ids.forEach(id=>element('#'+id));
 const document={querySelector(s){assert.ok(elements.has(s),'missing DOM id '+s);return element(s)},querySelectorAll(){return []},addEventListener(k,f){(events[k]??=[]).push(f)},body:{append(){}}};
@@ -15,7 +15,7 @@ for(const m of code.matchAll(/import \{([^}]+)\} from '([^']+)';/g)){const expor
 code=code.replace(/^import .*;$/gm,'');
 let now=0;
 const bootCalls={ready:0,failed:[]};
-const c=vm.createContext({gameBoot:{ready(){bootCalls.ready++},fail(text){bootCalls.failed.push(text)}},...globals,document,innerWidth:844,innerHeight:390,devicePixelRatio:2,performance:{now:()=>now},requestAnimationFrame:f=>scheduled=f,addEventListener(k,f){(events[k]??=[]).push(f)},console});
+const c=vm.createContext({gameBoot:{ready(){bootCalls.ready++},fail(text){bootCalls.failed.push(text);this.onFailure?.()}},...globals,document,innerWidth:844,innerHeight:390,devicePixelRatio:2,performance:{now:()=>now},requestAnimationFrame:f=>{requests++;scheduled=f},addEventListener(k,f){(events[k]??=[]).push(f)},console});
 vm.runInContext(code,c);const read=s=>vm.runInContext(s,c);
 function frames(n){for(let i=0;i<n;i++){now+=16;scheduled(now)}}
 function event(k,e={}){for(const fn of events[k]??[])fn(e)}
@@ -245,6 +245,14 @@ now+=5000;element('#reset').onclick();slowFrame(100);assert.ok(Math.abs(read('hu
 read('syncHunt(huntLast-50)');slowFrame(100);assert.ok(Math.abs(read('huntRemaining')-119.8)<1e-8,'older frame timestamp cannot rewind clock');
 
 assert.equal(bootCalls.ready,1,'boot ready signaled once, after first successful renderer call');
+
+event('keydown',{key:'w',code:'KeyW'});
+read('globalThis.gameBoot.onFailure()');assert.equal(read('runtimeFailed'),true);assert.equal(read('paused'),true);assert.equal(read('keys.size'),0);
+const failureState=read('JSON.stringify([huntRemaining,hp,score,roach.position,human.position])');
+const failureRenders=renders,failureRequests=requests;
+element('#pause').onclick();element('#reset').onclick();element('#role').onchange();element('#act').onclick();frames(100);
+assert.equal(read('paused'),true);assert.equal(read('JSON.stringify([huntRemaining,hp,score,roach.position,human.position])'),failureState);
+assert.equal(renders,failureRenders,'fatal error stops rendering');assert.equal(requests,failureRequests,'fatal error stops scheduling new frames');
 let lossPrevented=false;element('canvas').fire('webglcontextlost',{preventDefault(){lossPrevented=true}});
 assert.equal(lossPrevented,true);assert.equal(read('paused'),true);assert.match(bootCalls.failed.at(-1),/繪圖連線已中斷/);
 console.log('PASS: first rendered frame readiness and WebGL context-loss pause/failure signal.');

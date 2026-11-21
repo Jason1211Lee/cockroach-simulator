@@ -1,0 +1,312 @@
+import fs from 'node:fs';
+import vm from 'node:vm';
+import assert from 'node:assert/strict';
+const html=fs.readFileSync(new URL('./3d.html',import.meta.url),'utf8');
+const events={},elements=new Map();let renders=0,scheduled,requests=0;
+function element(id){if(!elements.has(id))elements.set(id,{value:id==='#role'?'roach':id==='#type'?'fast':'shy',textContent:'',style:{},handlers:{},addEventListener(k,f){(this.handlers[k]??=[]).push(f)},setPointerCapture(){},getBoundingClientRect(){return {left:0,top:0,width:120,height:120}},fire(k,e){for(const f of this.handlers[k]??[])f(e);this['on'+k]?.(e)}});return elements.get(id)}
+const ids=[...html.matchAll(/id="([^"]+)"/g)].map(m=>m[1]);ids.forEach(id=>element('#'+id));
+const document={querySelector(s){assert.ok(elements.has(s),'missing DOM id '+s);return element(s)},querySelectorAll(){return []},addEventListener(k,f){(events[k]??=[]).push(f)},body:{append(){}}};
+class Vector{constructor(x=0,y=0,z=0){this.set(x,y,z)}set(x,y,z){Object.assign(this,{x,y,z});return this}}
+class Object3D{constructor(){this.position=new Vector();this.scale=new Vector(1,1,1);this.rotation={x:0,y:0,z:0};this.children=[]}add(x){this.children.push(x)}remove(x){this.children=this.children.filter(v=>v!==x)}setFromPoints(){return this}lookAt(){}updateProjectionMatrix(){}}
+class Renderer{constructor(){this.domElement=element('canvas')}setPixelRatio(){}setSize(){}render(){renders++}}
+const T=new Proxy({Vector3:Vector,WebGLRenderer:Renderer,MathUtils:{damp:(a,b,k,dt)=>b+(a-b)*Math.exp(-k*dt)}},{get:(o,k)=>o[k]??Object3D});
+let code=html.split('<script type="module">')[1].split('</script>')[0];const globals={T};
+for(const m of code.matchAll(/import \{([^}]+)\} from '([^']+)';/g)){const exports=await import(new URL(m[2],import.meta.url));for(const name of m[1].split(',').map(v=>v.trim())){assert.ok(exports[name]!==undefined,name+' export missing');globals[name]=exports[name]}}
+code=code.replace(/^import .*;$/gm,'');
+let now=0;
+const bootCalls={ready:0,failed:[]};
+const c=vm.createContext({gameBoot:{ready(){bootCalls.ready++},fail(text){bootCalls.failed.push(text);this.onFailure?.()}},...globals,document,innerWidth:844,innerHeight:390,devicePixelRatio:2,performance:{now:()=>now},requestAnimationFrame:f=>{requests++;scheduled=f},addEventListener(k,f){(events[k]??=[]).push(f)},console});
+vm.runInContext(code,c);const read=s=>vm.runInContext(s,c);
+function frames(n){for(let i=0;i<n;i++){now+=16;scheduled(now)}}
+function event(k,e={}){for(const fn of events[k]??[])fn(e)}
+assert.equal(read('hp'),100);assert.equal(read('foods.length'),3);assert.ok(scheduled);
+
+element('#scare').onclick();assert.equal(read('progress.xp'),0,'distant scare gives no XP');
+read('human.position.set(roach.position.x+.5,0,roach.position.z)');
+element('#scare').onclick();assert.equal(read('progress.xp'),20);
+element('#scare').onclick();assert.equal(read('progress.xp'),20,'scare reward only once');
+read('roach.position.set(foods[0].position.x,0,foods[0].position.z)');frames(1);
+assert.equal(read('progress.xp'),30);assert.equal(read('growthStats(progress.xp).level'),2);
+assert.equal(read('growthStats(progress.xp).strength'),2);
+assert.match(element('#status').textContent,/Lv 2 · XP 30 · 力量 2/);
+frames(3);assert.equal(read('progress.xp'),30,'collected food cannot reward twice');
+function walkSample(){
+ read('roach.position.set(-4,0,3);roach.rotation.y=0');
+ event('keydown',{key:'w',code:'KeyW'});frames(10);event('keyup',{key:'w'});
+ return 3-read('roach.position.z');
+}
+const grownDistance=walkSample();
+read('roach.position.set(largeFood.position.x,0,largeFood.position.z)');
+element('#carry').onclick();assert.equal(read('carrying'),true);
+const carryDistance=walkSample();
+assert.ok(Math.abs(carryDistance/grownDistance-.8)<1e-9,'carrying reduces actual movement by 20%');
+element('#act').onclick();assert.equal(read('flight'),0);assert.match(element('#feedback').textContent,/搬運時/);
+element('#carry').onclick();assert.equal(read('carrying'),false);
+element('#reset').onclick();assert.equal(read('progress.xp'),0);assert.equal(read('progress.claimed.size'),0);
+const baseDistance=walkSample();assert.ok(Math.abs(grownDistance/baseDistance-1.1)<1e-9,'level 2 moves 10% farther');
+element('#mood').value='chase';element('#mood').onchange();
+read('human.position.set(roach.position.x+.5,0,roach.position.z)');element('#scare').onclick();assert.equal(read('progress.xp'),0);
+element('#mood').value='shy';element('#mood').onchange();
+
+element('#act').onclick();assert.match(element('#feedback').textContent,/不能飛行/);frames(3);assert.match(element('#feedback').textContent,/不能飛行/);
+event('keydown',{key:'ArrowUp',code:'ArrowUp',preventDefault(){}});frames(20);event('keyup',{key:'ArrowUp'});assert.ok(read('roach.position.z')<3);assert.ok(renders>=20);
+element('#type').value='fly';element('#type').onchange();element('#act').onclick();assert.equal(read('flight'),5);assert.match(element('#feedback').textContent,/起飛/);frames(20);assert.ok(read('roach.position.y')>.4);
+const old=read('altitude');element('#rise').onclick();assert.ok(read('altitude')>old);element('#lower').onclick();assert.equal(read('altitude'),old);
+element('#act').onclick();assert.equal(read('flight'),0);assert.match(element('#feedback').textContent,/降落/);element('#act').onclick();assert.match(element('#feedback').textContent,/冷卻/);frames(100);assert.ok(read('roach.position.y')<.01);
+element('canvas').fire('pointerdown',{button:0,pointerId:8,clientX:0,clientY:0});element('canvas').fire('pointermove',{pointerId:8,clientX:80,clientY:20});assert.notEqual(read('yaw'),0);
+element('#pad').fire('pointerdown',{pointerId:9,clientX:105,clientY:60});assert.ok(read('axis.x')>0);event('visibilitychange');assert.equal(read('axis.x'),0);assert.equal(read('lookPointer'),null);
+element('#type').value='fly';element('#type').onchange();element('#act').onclick();
+element('#pause').onclick();assert.equal(read('paused'),true);
+const frozen=read('JSON.stringify([roach.position.x,roach.position.y,roach.position.z,human.position.x,human.position.z,hp,cool,flight,score])');
+const pausedControls=read('JSON.stringify([altitude,yaw,pitch,axis,Array.from(keys),pointer,lookPointer])');
+for(const id of ['#act','#rise','#lower','#left','#right']){
+ element(id).onclick();
+ assert.equal(read('JSON.stringify([altitude,yaw,pitch,axis,Array.from(keys),pointer,lookPointer])'),pausedControls,id+' must not change paused controls');
+}
+event('keydown',{key:'w',code:'KeyW'});
+element('#pad').fire('pointerdown',{pointerId:21,clientX:105,clientY:60});
+element('#pad').fire('pointermove',{pointerId:21,clientX:60,clientY:15});
+element('canvas').fire('pointerdown',{button:0,pointerId:22,clientX:0,clientY:0});
+element('canvas').fire('pointermove',{pointerId:22,clientX:80,clientY:20});
+frames(40);
+assert.equal(read('JSON.stringify([altitude,yaw,pitch,axis,Array.from(keys),pointer,lookPointer])'),pausedControls,'paused controls must not accumulate direction, altitude or camera changes');
+assert.equal(read('JSON.stringify([roach.position.x,roach.position.y,roach.position.z,human.position.x,human.position.z,hp,cool,flight,score])'),frozen);
+const resumePosition=read('JSON.stringify([roach.position.x,roach.position.z])');
+element('#pause').onclick();frames(2);assert.ok(read('flight')<5);
+assert.equal(read('JSON.stringify([roach.position.x,roach.position.z])'),resumePosition,'resume must not move from input pressed while paused');
+event('keydown',{key:'w',code:'KeyW'});frames(4);event('keyup',{key:'w'});
+assert.notEqual(read('JSON.stringify([roach.position.x,roach.position.z])'),resumePosition,'fresh input must work after resume');
+document.hidden=true;event('visibilitychange');assert.equal(read('paused'),true);document.hidden=false;event('visibilitychange');assert.equal(read('paused'),true);
+element('#reset').onclick();assert.equal(read('paused'),false);
+element('#role').value='human';element('#role').onchange();element('#act').onclick();assert.match(element('#feedback').textContent,/距離/);read('roach.position.set(human.position.x,0,human.position.z)');element('#act').onclick();assert.equal(read('score'),1);assert.match(element('#feedback').textContent,/命中/);element('#act').onclick();assert.match(element('#feedback').textContent,/冷卻/);
+element('#reset').onclick();assert.equal(read('score'),0);assert.equal(read('hp'),100);assert.equal(read('foods.length'),3);assert.equal(read('cool'),0);
+
+// Exercise all archetypes through collection, delivery, victory and restart.
+element('#role').value='roach';element('#mood').value='shy';
+for(const type of ['fast','agile','fly']){
+ element('#type').value=type;element('#type').onchange();
+ read('roach.position.set(largeFood.position.x,0,largeFood.position.z)');
+ element('#carry').onclick();assert.equal(read('carrying'),false);assert.match(element('#feedback').textContent,/力量 2/);
+ read('human.position.set(roach.position.x+.5,0,roach.position.z)');
+ element('#scare').onclick();
+ for(let i=0;i<3;i++){read('roach.position.set(foods[0].position.x,0,foods[0].position.z)');frames(1);}
+ assert.equal(read('score'),3);assert.equal(read('end'),false,'food alone must not end before large delivery');
+ assert.equal(read('progress.xp'),50);
+ read('roach.position.set(largeFood.position.x,0,largeFood.position.z)');
+ if(type==='fly'){
+  element('#act').onclick();element('#carry').onclick();assert.equal(read('carrying'),false,'cannot pick up during takeoff');
+  element('#act').onclick();frames(100);
+ }
+ element('#carry').onclick();assert.equal(read('carrying'),true);
+ element('#pause').onclick();element('#carry').onclick();assert.equal(read('carrying'),true,'pause blocks drop');
+ element('#pause').onclick();
+ read('roach.position.set(2,0,3)');element('#carry').onclick();assert.equal(read('carrying'),false);
+ assert.equal(read('largeDelivered'),false);assert.equal(read('progress.xp'),50,'drop gives no reward');
+ element('#carry').onclick();assert.equal(read('carrying'),true,'can pick up dropped food');
+ read('roach.position.set(-4,0,3)');element('#carry').onclick();
+ assert.equal(read('largeDelivered'),true);assert.equal(read('carrying'),false);
+ assert.equal(read('progress.xp'),80);assert.equal(read('growthStats(progress.xp).level'),3);
+ assert.equal(read('end'),true);
+ element('#carry').onclick();frames(3);assert.equal(read('progress.xp'),80,'delivery reward once');
+ element('#reset').onclick();assert.equal(read('carrying'),false);assert.equal(read('largeDelivered'),false);assert.equal(read('progress.xp'),0);
+}
+element('#mood').value='chase';element('#mood').onchange();
+for(let i=0;i<3;i++){read('roach.position.set(foods[0].position.x,0,foods[0].position.z)');frames(1);}
+assert.equal(read('progress.xp'),30,'non-shy route can upgrade without scare');
+read('roach.position.set(largeFood.position.x,0,largeFood.position.z)');element('#carry').onclick();assert.equal(read('carrying'),true);
+read('roach.position.set(-4,0,3)');element('#carry').onclick();
+assert.equal(read('progress.xp'),60);assert.equal(read('end'),true,'no scare required to win');
+element('#role').value='human';element('#role').onchange();read('roach.position.set(largeFood.position.x,0,largeFood.position.z)');element('#carry').onclick();assert.equal(read('carrying'),false,'human cannot use roach delivery');
+
+element('#role').value='roach';element('#type').value='fast';element('#mood').value='chase';
+function chaseSetup(){element('#reset').onclick();read('roach.position.set(-4,0,1)');read('human.position.set(roach.position.x+.5,0,roach.position.z)');frames(1);}
+chaseSetup();assert.equal(read('chaseAttack.phase'),'windup');assert.equal(read('hp'),100);assert.equal(read('attackMarker.visible'),true);
+assert.match(element('#threat').textContent,/拖鞋預警/);
+const attackPosition=read('JSON.stringify(human.position)');frames(20);assert.equal(read('hp'),100);
+assert.equal(read('JSON.stringify(human.position)'),attackPosition,'NPC stands still during windup');
+element('#pause').onclick();const frozenAttack=read('JSON.stringify(chaseAttack)');frames(50);
+assert.equal(read('JSON.stringify(chaseAttack)'),frozenAttack);assert.equal(read('hp'),100);
+element('#pause').onclick();frames(18);assert.equal(read('hp'),80,'one strike after warning');frames(50);assert.equal(read('hp'),80,'recovery cannot hit again');
+chaseSetup();const fixedTarget=read('JSON.stringify(chaseAttack.target)');
+read('roach.position.z-=1');frames(40);assert.equal(read('hp'),100,'leaving fixed target evades');
+assert.equal(read('JSON.stringify(chaseAttack.target)'),fixedTarget);
+element('#type').value='fly';chaseSetup();element('#act').onclick();frames(40);
+assert.ok(read('roach.position.y')>.5);assert.equal(read('hp'),100,'enough flight height avoids ground strike');
+element('#type').value='fast';chaseSetup();frames(800);assert.equal(read('hp'),0);assert.equal(read('end'),true);
+element('#reset').onclick();assert.equal(read('chaseAttack.phase'),'idle');assert.equal(read('attackMarker.visible'),false);assert.equal(read('hp'),100);
+
+element('#mood').value='spray';element('#type').value='fast';
+function spraySetup(){element('#reset').onclick();read('roach.position.set(-4,0,1)');read('human.position.set(roach.position.x+.5,0,roach.position.z)');frames(1);}
+spraySetup();assert.equal(read('sprayAttack.phase'),'windup');assert.equal(read('sprayWarning.visible'),true);
+assert.match(element('#threat').textContent,/噴藥預警/);frames(49);assert.equal(read('hp'),100);
+frames(1);assert.equal(read('sprayAttack.phase'),'cloud');assert.equal(read('hp'),90);assert.equal(read('sprayCloud.visible'),true);
+frames(62);assert.equal(read('hp'),90,'no repeated per-frame damage');frames(1);assert.equal(read('hp'),80);
+element('#pause').onclick();const frozenSpray=read('JSON.stringify(sprayAttack)');frames(100);assert.equal(read('JSON.stringify(sprayAttack)'),frozenSpray);assert.equal(read('hp'),80);
+element('#pause').onclick();frames(125);assert.equal(read('sprayAttack.phase'),'recovery');assert.equal(read('sprayCloud.visible'),false);assert.equal(read('hp'),70);
+frames(100);assert.equal(read('hp'),70,'expired cloud cannot damage');
+spraySetup();const sprayTarget=read('JSON.stringify(sprayAttack.target)');read('roach.position.z-=2');frames(100);
+assert.equal(read('hp'),100);assert.equal(read('JSON.stringify(sprayAttack.target)'),sprayTarget,'cloud stays at warned position');
+element('#type').value='fly';spraySetup();element('#act').onclick();frames(51);assert.ok(read('roach.position.y')>.5);assert.equal(read('hp'),90,'low flight is vulnerable');
+for(let i=0;i<6;i++)element('#rise').onclick();frames(50);assert.ok(read('roach.position.y')>1.5);
+frames(100);assert.equal(read('hp'),90,'above cloud height avoids later ticks');
+element('#role').value='human';element('#role').onchange();frames(2);assert.equal(read('sprayCloud.visible'),false);assert.equal(read('sprayWarning.visible'),false);assert.equal(read('sprayAttack.phase'),'idle');
+element('#role').value='roach';element('#type').value='fast';spraySetup();frames(2000);assert.equal(read('hp'),0);assert.equal(read('end'),true);
+element('#reset').onclick();assert.equal(read('hp'),100);assert.equal(read('sprayAttack.phase'),'idle');assert.equal(read('sprayCloud.visible'),false);
+
+element('#role').value='roach';element('#type').value='fast';
+for(const mood of ['shy','chase','spray']){
+ element('#mood').value=mood;element('#reset').onclick();
+ read('human.position.set(0,0,-1.1);roach.position.set(0,0,1.1)');
+ const hiddenHuman=read('JSON.stringify(human.position)');frames(150);
+ assert.equal(read('humanCanSee(human.position,roach.position,cameraBoxes)'),false);
+ assert.equal(read('JSON.stringify(human.position)'),hiddenHuman,'cabinet blocks NPC movement for '+mood);
+ assert.equal(read('sprayAttack.phase'),'idle');assert.equal(read('chaseAttack.phase'),'idle');assert.equal(read('hp'),100);
+}
+function addTestScreen(){read('cameraBoxes.push({min:{x:-3.8,y:0,z:roach.position.z-.2},max:{x:-3.7,y:2,z:roach.position.z+.2}})');}
+element('#mood').value='chase';chaseSetup();
+addTestScreen();frames(40);assert.equal(read('hp'),100,'screen blocks an already locked ground strike');
+read('cameraBoxes.pop()');
+for(const mood of ['chase','spray','shy']){
+ element('#mood').value=mood;element('#reset').onclick();read('roach.position.set(-4,0,1)');
+ read('human.position.set(roach.position.x+.5,0,roach.position.z)');addTestScreen();frames(80);
+ assert.equal(read('chaseAttack.phase'),'idle');assert.equal(read('sprayAttack.phase'),'idle');
+ element('#scare').onclick();assert.equal(read('progress.xp'),0,'cannot scare through a screen');
+ read('cameraBoxes.pop()');frames(1);
+ if(mood==='chase')assert.equal(read('chaseAttack.phase'),'windup');
+ if(mood==='spray')assert.equal(read('sprayAttack.phase'),'windup');
+ if(mood==='shy'){element('#scare').onclick();assert.equal(read('progress.xp'),20,'visible scare works again');}
+}
+element('#role').value='human';element('#reset').onclick();
+read('human.position.set(-3.5,0,3);roach.position.set(-4,0,3)');addTestScreen();
+element('#act').onclick();assert.equal(read('score'),0);assert.match(element('#feedback').textContent,/家具/);
+read('cameraBoxes.pop()');element('#act').onclick();assert.equal(read('score'),1);
+element('#role').value='roach';element('#mood').value='spray';spraySetup();frames(50);
+const cloudLifetime=read('sprayAttack.remaining');addTestScreen();frames(10);
+assert.ok(read('sprayAttack.remaining')<cloudLifetime,'existing cloud keeps expiring without sight');read('cameraBoxes.pop()');
+
+element('#role').value='roach';element('#type').value='fast';
+for(const mood of ['chase','spray']){
+ element('#mood').value=mood;element('#reset').onclick();
+ read('human.position.set(roach.position.x+.5,0,roach.position.z)');const refugeHuman=read('JSON.stringify(human.position)');
+ frames(200);assert.equal(read('hp'),100);assert.equal(read('chaseAttack.phase'),'idle');assert.equal(read('sprayAttack.phase'),'idle');
+ assert.equal(read('JSON.stringify(human.position)'),refugeHuman);assert.match(element('#status').textContent,/安全區/);
+}
+element('#mood').value='chase';element('#reset').onclick();
+read('roach.position.set(-4,0,2.35);human.position.set(-3.5,0,2.35)');frames(1);
+assert.equal(read('chaseAttack.phase'),'windup');read('roach.position.z=2.5');frames(38);
+assert.equal(read('hp'),100,'returning to refuge blocks a pending strike');
+frames(100);assert.equal(read('chaseAttack.phase'),'idle','pending attack still recovers in refuge');
+read('roach.position.z=2.35');frames(39);assert.equal(read('hp'),80,'leaving refuge restores chase damage');
+element('#mood').value='spray';element('#reset').onclick();
+read('roach.position.set(-4,0,2.35);human.position.set(-3.5,0,2.35)');frames(51);assert.equal(read('hp'),90);
+read('roach.position.z=2.5');const cloudTimeAtEntry=read('sprayAttack.remaining');frames(63);
+assert.equal(read('hp'),90,'overlapping cloud does not hurt inside refuge');assert.ok(read('sprayAttack.remaining')<cloudTimeAtEntry);
+read('roach.position.z=2.35');frames(63);assert.equal(read('hp'),80,'remaining cloud hurts again outside refuge');
+frames(70);assert.equal(read('sprayAttack.phase'),'recovery');
+element('#type').value='fly';element('#reset').onclick();read('human.position.set(-3.5,0,3)');
+element('#act').onclick();frames(70);assert.ok(read('roach.position.y')>.2);assert.equal(read('hp'),90,'flight above pad is not safe');
+element('#reset').onclick();frames(1);assert.equal(read('hp'),100);assert.match(element('#status').textContent,/安全區/);
+
+element('#role').value='human';element('#reset').onclick();assert.equal(read('huntRemaining'),120);
+frames(100);assert.ok(Math.abs(read('huntRemaining')-118.4)<1e-9);assert.match(element('#status').textContent,/剩餘 119 秒/);
+element('#pause').onclick();const pausedHunt=read('huntRemaining');frames(200);assert.equal(read('huntRemaining'),pausedHunt);
+element('#pause').onclick();event('blur');frames(100);assert.equal(read('huntRemaining'),pausedHunt,'blur pauses human clock');
+element('#pause').onclick();frames(1);assert.ok(read('huntRemaining')<pausedHunt);
+element('#reset').onclick();frames(7499);assert.equal(read('end'),false,'not before 120 seconds');frames(1);
+assert.equal(read('huntRemaining'),0);assert.equal(read('end'),true);assert.match(element('#status').textContent,/搜尋超時.*失敗/);
+const lostScore=read('score'),lostPositions=read('JSON.stringify([human.position,roach.position])');
+element('#act').onclick();event('keydown',{key:'w',code:'KeyW'});frames(10);event('keyup',{key:'w'});
+assert.equal(read('score'),lostScore);assert.equal(read('JSON.stringify([human.position,roach.position])'),lostPositions,'timeout freezes actors');
+element('#reset').onclick();assert.equal(read('end'),false);assert.equal(read('huntRemaining'),120);
+for(let i=0;i<3;i++){
+ read('roach.position.set(human.position.x,0,human.position.z)');element('#act').onclick();
+ if(i<2)frames(63);
+}
+assert.equal(read('score'),3);assert.equal(read('end'),true);
+const wonTime=read('huntRemaining');frames(8000);assert.equal(read('huntRemaining'),wonTime);assert.match(element('#status').textContent,/任務完成/);
+element('#role').value='roach';element('#role').onchange();frames(100);assert.equal(read('huntRemaining'),120,'roach mode has no human time limit');
+element('#role').value='human';element('#role').onchange();assert.equal(read('huntRemaining'),120);assert.equal(read('score'),0);
+
+function slowFrame(ms){now+=ms;scheduled(now);}
+element('#reset').onclick();
+for(let i=0;i<1199;i++)slowFrame(100);
+assert.ok(Math.abs(read('huntRemaining')-.1)<1e-8);assert.equal(read('end'),false);
+slowFrame(100);assert.equal(read('huntRemaining'),0);assert.equal(read('end'),true,'10 FPS still expires at 120 real seconds');
+element('#reset').onclick();const stalledPosition=read('JSON.stringify([human.position,roach.position])');
+slowFrame(121000);assert.equal(read('end'),true);assert.equal(read('JSON.stringify([human.position,roach.position])'),stalledPosition,'long active stall expires before actor update');
+element('#reset').onclick();now+=20;element('#pause').onclick();
+assert.ok(Math.abs(read('huntRemaining')-119.98)<1e-8,'pause accounts for active time since previous frame');
+const exactPausedTime=read('huntRemaining');now+=60000;element('#pause').onclick();slowFrame(100);
+assert.ok(Math.abs(read('huntRemaining')-(exactPausedTime-.1))<1e-8,'paused minute excluded even without frames');
+element('#reset').onclick();now+=120000;
+read('roach.position.set(human.position.x,0,human.position.z)');element('#act').onclick();
+assert.equal(read('score'),0);assert.equal(read('end'),true,'cannot score after deadline before next render');
+now+=5000;element('#reset').onclick();slowFrame(100);assert.ok(Math.abs(read('huntRemaining')-119.9)<1e-8,'reset starts a new clock');
+read('syncHunt(huntLast-50)');slowFrame(100);assert.ok(Math.abs(read('huntRemaining')-119.8)<1e-8,'older frame timestamp cannot rewind clock');
+
+
+// Held altitude input: actual page handlers and frame loop, using DOM/Three substitutes.
+function startFlight(){
+ element('#role').value='roach';element('#type').value='fly';element('#mood').value='shy';
+ element('#reset').onclick();element('#act').onclick();
+}
+function holdAltitude(id,pointerId){element(id).fire('pointerdown',{pointerId,preventDefault(){}})}
+startFlight();holdAltitude('#rise',31);frames(30);
+assert.ok(Math.abs(read('altitude')-1.28)<1e-8,'held rise integrates 1 unit per second');
+assert.ok(read('roach.position.y')>.8,'render loop follows raised target');
+element('#rise').fire('pointerup',{pointerId:31});const releasedHeight=read('altitude');
+element('#rise').onclick({detail:1});frames(10);assert.equal(read('altitude'),releasedHeight,'release and synthesized pointer click do not add height');
+holdAltitude('#rise',32);holdAltitude('#lower',33);frames(10);assert.equal(read('altitude'),releasedHeight,'opposing holds cancel');
+element('#rise').fire('pointercancel',{pointerId:32});frames(10);assert.ok(read('altitude')<releasedHeight);
+element('#lower').fire('lostpointercapture',{pointerId:33});const cancelledHeight=read('altitude');
+frames(10);assert.equal(read('altitude'),cancelledHeight,'lost capture stops lowering');
+startFlight();holdAltitude('#rise',34);frames(100);assert.equal(read('altitude'),2.2,'upper limit');
+element('#rise').fire('pointerup',{pointerId:34});holdAltitude('#lower',35);frames(125);assert.equal(read('altitude'),.25,'lower limit');
+element('#lower').fire('pointerup',{pointerId:35});
+startFlight();event('keydown',{key:'q',code:'KeyQ'});frames(20);event('keyup',{key:'q'});
+assert.ok(Math.abs(read('altitude')-1.12)<1e-8,'Q raises continuously');
+event('keydown',{key:'z',code:'KeyZ'});frames(10);event('keyup',{key:'z'});
+assert.ok(Math.abs(read('altitude')-.96)<1e-8,'Z lowers continuously');
+element('#rise').onclick({detail:0});assert.ok(Math.abs(read('altitude')-1.21)<1e-8,'accessible click keeps discrete step');
+startFlight();holdAltitude('#rise',36);
+element('#pad').fire('pointerdown',{pointerId:37,clientX:90,clientY:30});
+element('canvas').fire('pointerdown',{pointerId:38,button:0,clientX:80,clientY:80});
+element('canvas').fire('pointermove',{pointerId:38,clientX:100,clientY:85});
+const heldPosition=read('JSON.stringify(roach.position)');frames(10);
+assert.ok(read('altitude')>.8);assert.notEqual(read('JSON.stringify(roach.position)'),heldPosition);
+assert.equal(read('pointer'),37);assert.equal(read('lookPointer'),38,'three independent pointers coexist');
+for(const clearEvent of ['pause','blur','resize','reset']){
+ startFlight();holdAltitude('#rise',39);
+ if(clearEvent==='pause')element('#pause').onclick();
+ else if(clearEvent==='reset')element('#reset').onclick();
+ else event(clearEvent);
+ assert.equal(read('altitudeHolds.size'),0,clearEvent+' clears held altitude');
+ if(read('paused'))element('#pause').onclick();
+ const clearedHeight=read('altitude');frames(5);assert.equal(read('altitude'),clearedHeight);
+}
+startFlight();holdAltitude('#rise',40);read('flight=.001');frames(1);
+assert.equal(read('altitudeHolds.size'),0,'flight expiry clears holds');
+element('#reset').onclick();holdAltitude('#rise',41);assert.equal(read('altitudeHolds.size'),0,'grounded pointer hold is rejected');
+element('#act').onclick();frames(5);assert.equal(read('altitude'),.8,'grounded hold does not queue ascent');
+console.log('PASS: held rise/lower, Q/Z, bounds, opposing holds, accessible click, release/cancel/capture loss, concurrent movement/look, pause/blur/resize/reset/flight expiry. Simulated handlers only.');
+
+assert.equal(bootCalls.ready,1,'boot ready signaled once, after first successful renderer call');
+
+event('keydown',{key:'w',code:'KeyW'});
+read('globalThis.gameBoot.onFailure()');assert.equal(read('runtimeFailed'),true);assert.equal(read('paused'),true);assert.equal(read('keys.size'),0);
+const failureState=read('JSON.stringify([huntRemaining,hp,score,roach.position,human.position])');
+const failureRenders=renders,failureRequests=requests;
+element('#pause').onclick();element('#reset').onclick();element('#role').onchange();element('#act').onclick();frames(100);
+assert.equal(read('paused'),true);assert.equal(read('JSON.stringify([huntRemaining,hp,score,roach.position,human.position])'),failureState);
+assert.equal(renders,failureRenders,'fatal error stops rendering');assert.equal(requests,failureRequests,'fatal error stops scheduling new frames');
+let lossPrevented=false;element('canvas').fire('webglcontextlost',{preventDefault(){lossPrevented=true}});
+assert.equal(lossPrevented,true);assert.equal(read('paused'),true);assert.match(bootCalls.failed.at(-1),/繪圖連線已中斷/);
+console.log('PASS: first rendered frame readiness and WebGL context-loss pause/failure signal.');
+console.log('PASS: real elapsed time at 10 FPS, long active stall, pause/resume between frames, input deadline and reset timestamp.');
+console.log('PASS: human 120s boundary, pause/blur freeze, timeout loss, frozen actors/actions, restart, victory freeze and role reset.');
+console.log('PASS: refuge blocks detection and damage, pending strike and cloud timers continue, exit restores damage, airborne pad and restart.');
+console.log('PASS: actual cabinet NPC blocking, screened attack/scare/human action, restored sight and independent cloud lifetime.');
+console.log('PASS: spray warning, damage interval, cloud expiry, pause, evade, low/high flight, role reset and loss.');
+console.log('PASS: chase warning marker, stopped windup, pause freeze, single damage, evade, flight height, loss and reset.');
+console.log('PASS: large food strength gate, carrying slowdown, ground-only pickup, drop/re-pickup, pause, all archetype collection/delivery victory, level 3, reset and role gating.');
+console.log('PASS: entire page startup/module exports, rendered loop, arrow movement, role/type handlers, takeoff/altitude/landing, camera drag, joystick/background reset, pause freeze/resume/background gating, human action and full restart. DOM/Three substitutes; no real WebGL rendering or mobile device test.');

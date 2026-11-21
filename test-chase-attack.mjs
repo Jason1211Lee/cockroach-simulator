@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {createChaseAttack,stepChaseAttack} from './chase-attack.mjs';
+const a={x:0,y:0,z:0},p={x:.5,y:0,z:0};
+let s=createChaseAttack();
+assert.equal(stepChaseAttack(s,.016,a,{...p,x:2}).started,false);
+assert.equal(stepChaseAttack(s,.016,a,{...p,y:1}).started,false);
+assert.equal(stepChaseAttack(s,.016,a,p).started,true);
+assert.deepEqual(s.target,{x:.5,y:0,z:0});
+for(let i=0;i<5;i++)assert.equal(stepChaseAttack(s,.1,a,{x:2,y:0,z:2}).strike,null);
+const hit=stepChaseAttack(s,.1,a,p);assert.deepEqual(hit.strike,{x:.5,y:0,z:0});assert.equal(s.phase,'recovery');
+let strikes=0;for(let i=0;i<14;i++)if(stepChaseAttack(s,.1,a,p).strike)strikes++;
+assert.equal(strikes,0);assert.equal(s.phase,'recovery');
+stepChaseAttack(s,.1,a,p);assert.equal(s.phase,'idle');
+assert.equal(stepChaseAttack(s,.016,a,p).started,true);
+assert.equal(createChaseAttack().target,null);
+console.log('PASS: range and height trigger, fixed target, 0.6s warning, single strike, 1.5s recovery and fresh state.');

@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import {withinReach} from './interaction-range.mjs';
+const floor={x:0,y:.045,z:0};
+assert.equal(withinReach({x:0,y:0,z:0},floor,.3),true);
+assert.equal(withinReach({x:0,y:1.2,z:0},floor,.3),false,'no aerial floor pickup');
+assert.equal(withinReach({x:.2,y:.25,z:0},floor,.3),true);
+assert.equal(withinReach({x:0,y:0,z:0},{x:0,y:2,z:0},1.3),false,'human cannot reach high roach');
+assert.equal(withinReach({x:0,y:0,z:0},{x:0,y:.8,z:0},1.3),true);
+assert.equal(withinReach({x:0,y:0,z:0},{x:.3,y:0,z:0},.3),false);
+assert.equal(withinReach({x:0,y:0,z:0},{x:0,y:NaN,z:0},.3),false);
+assert.equal(withinReach(floor,floor,-1),false);
+console.log('PASS: 8 spatial interaction assertions.');

@@ -244,6 +244,52 @@ assert.equal(read('score'),0);assert.equal(read('end'),true,'cannot score after 
 now+=5000;element('#reset').onclick();slowFrame(100);assert.ok(Math.abs(read('huntRemaining')-119.9)<1e-8,'reset starts a new clock');
 read('syncHunt(huntLast-50)');slowFrame(100);assert.ok(Math.abs(read('huntRemaining')-119.8)<1e-8,'older frame timestamp cannot rewind clock');
 
+
+// Held altitude input: actual page handlers and frame loop, using DOM/Three substitutes.
+function startFlight(){
+ element('#role').value='roach';element('#type').value='fly';element('#mood').value='shy';
+ element('#reset').onclick();element('#act').onclick();
+}
+function holdAltitude(id,pointerId){element(id).fire('pointerdown',{pointerId,preventDefault(){}})}
+startFlight();holdAltitude('#rise',31);frames(30);
+assert.ok(Math.abs(read('altitude')-1.28)<1e-8,'held rise integrates 1 unit per second');
+assert.ok(read('roach.position.y')>.8,'render loop follows raised target');
+element('#rise').fire('pointerup',{pointerId:31});const releasedHeight=read('altitude');
+element('#rise').onclick({detail:1});frames(10);assert.equal(read('altitude'),releasedHeight,'release and synthesized pointer click do not add height');
+holdAltitude('#rise',32);holdAltitude('#lower',33);frames(10);assert.equal(read('altitude'),releasedHeight,'opposing holds cancel');
+element('#rise').fire('pointercancel',{pointerId:32});frames(10);assert.ok(read('altitude')<releasedHeight);
+element('#lower').fire('lostpointercapture',{pointerId:33});const cancelledHeight=read('altitude');
+frames(10);assert.equal(read('altitude'),cancelledHeight,'lost capture stops lowering');
+startFlight();holdAltitude('#rise',34);frames(100);assert.equal(read('altitude'),2.2,'upper limit');
+element('#rise').fire('pointerup',{pointerId:34});holdAltitude('#lower',35);frames(125);assert.equal(read('altitude'),.25,'lower limit');
+element('#lower').fire('pointerup',{pointerId:35});
+startFlight();event('keydown',{key:'q',code:'KeyQ'});frames(20);event('keyup',{key:'q'});
+assert.ok(Math.abs(read('altitude')-1.12)<1e-8,'Q raises continuously');
+event('keydown',{key:'z',code:'KeyZ'});frames(10);event('keyup',{key:'z'});
+assert.ok(Math.abs(read('altitude')-.96)<1e-8,'Z lowers continuously');
+element('#rise').onclick({detail:0});assert.ok(Math.abs(read('altitude')-1.21)<1e-8,'accessible click keeps discrete step');
+startFlight();holdAltitude('#rise',36);
+element('#pad').fire('pointerdown',{pointerId:37,clientX:90,clientY:30});
+element('canvas').fire('pointerdown',{pointerId:38,button:0,clientX:80,clientY:80});
+element('canvas').fire('pointermove',{pointerId:38,clientX:100,clientY:85});
+const heldPosition=read('JSON.stringify(roach.position)');frames(10);
+assert.ok(read('altitude')>.8);assert.notEqual(read('JSON.stringify(roach.position)'),heldPosition);
+assert.equal(read('pointer'),37);assert.equal(read('lookPointer'),38,'three independent pointers coexist');
+for(const clearEvent of ['pause','blur','resize','reset']){
+ startFlight();holdAltitude('#rise',39);
+ if(clearEvent==='pause')element('#pause').onclick();
+ else if(clearEvent==='reset')element('#reset').onclick();
+ else event(clearEvent);
+ assert.equal(read('altitudeHolds.size'),0,clearEvent+' clears held altitude');
+ if(read('paused'))element('#pause').onclick();
+ const clearedHeight=read('altitude');frames(5);assert.equal(read('altitude'),clearedHeight);
+}
+startFlight();holdAltitude('#rise',40);read('flight=.001');frames(1);
+assert.equal(read('altitudeHolds.size'),0,'flight expiry clears holds');
+element('#reset').onclick();holdAltitude('#rise',41);assert.equal(read('altitudeHolds.size'),0,'grounded pointer hold is rejected');
+element('#act').onclick();frames(5);assert.equal(read('altitude'),.8,'grounded hold does not queue ascent');
+console.log('PASS: held rise/lower, Q/Z, bounds, opposing holds, accessible click, release/cancel/capture loss, concurrent movement/look, pause/blur/resize/reset/flight expiry. Simulated handlers only.');
+
 assert.equal(bootCalls.ready,1,'boot ready signaled once, after first successful renderer call');
 
 event('keydown',{key:'w',code:'KeyW'});

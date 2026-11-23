@@ -3,7 +3,7 @@ import vm from 'node:vm';
 import assert from 'node:assert/strict';
 const html=fs.readFileSync(new URL('./3d.html',import.meta.url),'utf8');
 const events={},elements=new Map();let renders=0,scheduled,requests=0;
-function element(id){if(!elements.has(id))elements.set(id,{value:id==='#role'?'roach':id==='#type'?'fast':'shy',textContent:'',style:{},handlers:{},addEventListener(k,f){(this.handlers[k]??=[]).push(f)},setPointerCapture(){},getBoundingClientRect(){return {left:0,top:0,width:120,height:120}},fire(k,e){for(const f of this.handlers[k]??[])f(e);this['on'+k]?.(e)}});return elements.get(id)}
+function element(id){if(!elements.has(id))elements.set(id,{value:id==='#role'?'roach':id==='#type'?'fast':'shy',textContent:'',style:{},handlers:{},addEventListener(k,f){(this.handlers[k]??=[]).push(f)},setPointerCapture(){},focus(options){this.focused=true;this.focusOptions=options},getBoundingClientRect(){return {left:0,top:0,width:120,height:120}},fire(k,e){for(const f of this.handlers[k]??[])f(e);this['on'+k]?.(e)}});return elements.get(id)}
 const ids=[...html.matchAll(/id="([^"]+)"/g)].map(m=>m[1]);ids.forEach(id=>element('#'+id));
 const document={querySelector(s){assert.ok(elements.has(s),'missing DOM id '+s);return element(s)},querySelectorAll(){return []},addEventListener(k,f){(events[k]??=[]).push(f)},body:{append(){}}};
 class Vector{constructor(x=0,y=0,z=0){this.set(x,y,z)}set(x,y,z){Object.assign(this,{x,y,z});return this}}
@@ -289,6 +289,41 @@ assert.equal(read('altitudeHolds.size'),0,'flight expiry clears holds');
 element('#reset').onclick();holdAltitude('#rise',41);assert.equal(read('altitudeHolds.size'),0,'grounded pointer hold is rejected');
 element('#act').onclick();frames(5);assert.equal(read('altitude'),.8,'grounded hold does not queue ascent');
 console.log('PASS: held rise/lower, Q/Z, bounds, opposing holds, accessible click, release/cancel/capture loss, concurrent movement/look, pause/blur/resize/reset/flight expiry. Simulated handlers only.');
+
+
+// Focused UI controls retain native keys; game keyup still releases stale input.
+function uiTarget(tag='summary'){return {closest(selector){assert.ok(selector.split(',').includes(tag));return this}}}
+element('#role').value='roach';element('#type').value='fly';element('#reset').onclick();
+for(const label of ['summary','select','button','a','input','textarea','nested icon']){
+ const target=uiTarget(label==='nested icon'?'button':label);let prevented=false;
+ for(const [key,code] of [[' ','Space'],['ArrowUp','ArrowUp'],['e','KeyE'],['f','KeyF'],['q','KeyQ']]){
+  event('keydown',{target,key,code,preventDefault(){prevented=true}});
+ }
+ assert.equal(prevented,false,label+' native key defaults are retained');
+ assert.equal(read('flight'),0);assert.equal(read('keys.size'),0);
+}
+event('keydown',{target:{isContentEditable:true},key:' ',code:'Space',preventDefault(){throw Error('editable default cancelled')}});
+assert.equal(read('flight'),0);
+for(const modifier of ['ctrlKey','metaKey','altKey','isComposing']){
+ event('keydown',{key:' ',code:'Space',[modifier]:true,preventDefault(){throw Error('shortcut intercepted')}});
+ assert.equal(read('flight'),0);
+}
+event('keydown',{key:'w',code:'KeyW'});assert.equal(read('keys.has("w")'),true);
+event('focusin',{target:uiTarget()});assert.equal(read('keys.size'),0,'focusing UI stops held keyboard movement');
+event('keydown',{key:'w',code:'KeyW'});event('keyup',{target:uiTarget(),key:'w'});
+assert.equal(read('keys.size'),0,'keyup releases even over controls');
+element('#pad').fire('pointerdown',{pointerId:91,clientX:90,clientY:30});
+event('focusin',{target:uiTarget()});assert.equal(read('pointer'),91,'button focus preserves simultaneous touch joystick');
+element('#pad').fire('pointerup',{pointerId:91});
+const canvas=element('canvas');assert.equal(canvas.tabIndex,0);
+canvas.fire('pointerdown',{pointerId:92,button:0,clientX:60,clientY:60});
+assert.equal(canvas.focused,true);assert.equal(canvas.focusOptions.preventScroll,true);
+canvas.fire('pointerup',{pointerId:92});
+let gameSpacePrevented=false;
+event('keydown',{target:canvas,key:' ',code:'Space',preventDefault(){gameSpacePrevented=true}});
+assert.equal(read('flight'),5,'canvas Space still takes off');assert.equal(gameSpacePrevented,true);
+event('keyup',{key:' '});
+console.log('PASS: focused control/editable/default key isolation, modified shortcuts, focus release, keyup, concurrent touch preservation and canvas focus/game keys. Simulated events, not native browser activation.');
 
 assert.equal(bootCalls.ready,1,'boot ready signaled once, after first successful renderer call');
 

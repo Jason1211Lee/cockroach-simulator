@@ -325,6 +325,32 @@ assert.equal(read('flight'),5,'canvas Space still takes off');assert.equal(gameS
 event('keyup',{key:' '});
 console.log('PASS: focused control/editable/default key isolation, modified shortcuts, focus release, keyup, concurrent touch preservation and canvas focus/game keys. Simulated events, not native browser activation.');
 
+
+function cameraRadius(actor,anchorHeight){
+ return read('Math.hypot(cam.position.x-'+actor+'.position.x,cam.position.y-'+actor+'.position.y-'+anchorHeight+',cam.position.z-'+actor+'.position.z)');
+}
+element('#role').value='roach';element('#reset').onclick();
+read('roach.position.set(-4,0,0);human.position.set(3,0,0);yaw=0;pitch=.4');
+element('#camera-distance').value='standard';frames(1);
+const standardRoachRadius=cameraRadius('roach',.25);
+element('#camera-distance').value='wide';const beforeCameraSwitch=read('JSON.stringify([hp,score,progress.xp,flight,roach.position])');
+frames(1);assert.ok(Math.abs(cameraRadius('roach',.25)/standardRoachRadius-1.5)<1e-9);
+assert.equal(read('JSON.stringify([hp,score,progress.xp,flight,roach.position])'),beforeCameraSwitch,'camera choice does not reset game or move actor');
+assert.ok(read('cam.position.y')>.25+Math.sin(.4)*standardRoachRadius,'wide distance also lifts camera at same pitch');
+read('cameraBoxes.push({min:{x:-4.2,y:0,z:.8},max:{x:-3.8,y:3,z:.9}})');
+frames(1);assert.ok(cameraRadius('roach',.25)<1,'wide camera still stops before furniture');
+read('cameraBoxes.pop()');frames(1);
+element('#pause').onclick();const cameraPausedState=read('JSON.stringify([hp,score,flight,roach.position])');
+element('#camera-distance').value='standard';frames(1);
+assert.ok(Math.abs(cameraRadius('roach',.25)-standardRoachRadius)<1e-9);
+assert.equal(read('JSON.stringify([hp,score,flight,roach.position])'),cameraPausedState,'camera may change during pause without advancing gameplay');
+element('#camera-distance').value='wide';element('#reset').onclick();
+assert.equal(element('#camera-distance').value,'wide','restart preserves view preference');
+element('#role').value='human';element('#role').onchange();read('human.position.set(3,0,0);yaw=0;pitch=.4');
+frames(1);assert.ok(Math.abs(cameraRadius('human',1.2)-4.5)<1e-9,'human mode uses own wide radius and height');
+element('#camera-distance').value='standard';frames(1);assert.ok(Math.abs(cameraRadius('human',1.2)-3)<1e-9);
+console.log('PASS: camera distance modes, unchanged gameplay, raised wide view, obstruction limit, pause, restart preference and human camera. Math/DOM substitutes, no visual verification.');
+
 assert.equal(bootCalls.ready,1,'boot ready signaled once, after first successful renderer call');
 
 event('keydown',{key:'w',code:'KeyW'});

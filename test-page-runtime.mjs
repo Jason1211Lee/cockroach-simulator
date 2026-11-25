@@ -351,6 +351,34 @@ frames(1);assert.ok(Math.abs(cameraRadius('human',1.2)-4.5)<1e-9,'human mode use
 element('#camera-distance').value='standard';frames(1);assert.ok(Math.abs(cameraRadius('human',1.2)-3)<1e-9);
 console.log('PASS: camera distance modes, unchanged gameplay, raised wide view, obstruction limit, pause, restart preference and human camera. Math/DOM substitutes, no visual verification.');
 
+
+read('globalThis.testHumanModel=human;globalThis.testHumanParts=human.children.slice()');
+for(const personality of ['shy','chase','spray']){
+ element('#role').value='roach';element('#mood').value=personality;element('#reset').onclick();
+ assert.equal(read('humanProfile.appearanceId'),'procedural-human-v1');
+ assert.equal(read('humanProfile.personalityId'),personality);
+ assert.equal(read('humanProfile.controller'),'ai');
+ assert.equal(read('Object.isFrozen(humanProfile)'),true);
+ assert.equal(read('human===globalThis.testHumanModel&&human.children.every((part,i)=>part===globalThis.testHumanParts[i])'),true,'same model and mesh parts for every personality');
+ read('roach.position.set(-4,0,1);human.position.set(-4,0,1.6)');
+ const beforeReaction=read('human.position.z');frames(1);
+ if(personality==='shy')assert.ok(read('human.position.z')>beforeReaction,'shy model flees');
+ if(personality==='chase')assert.equal(read('chaseAttack.phase'),'windup','same model prepares chase strike');
+ if(personality==='spray')assert.equal(read('sprayAttack.phase'),'windup','same model prepares spray');
+ element('#role').value='human';element('#role').onchange();
+ assert.equal(read('humanProfile.controller'),'player');
+ assert.equal(read('humanProfile.personalityId'),personality);
+ read('human.position.set(-4,0,1.6);roach.position.set(-4,0,1)');
+ const controlledHuman=read('JSON.stringify(human.position)');frames(30);
+ assert.equal(read('JSON.stringify(human.position)'),controlledHuman,'player human does not flee, chase or spray autonomously');
+ assert.equal(read('chaseAttack.phase'),'idle');assert.equal(read('sprayAttack.phase'),'idle');
+ assert.equal(read('human===globalThis.testHumanModel'),true);
+}
+assert.throws(()=>read("createHumanProfile({appearanceId:'missing'})"),/Unknown human appearance/);
+assert.throws(()=>read("createHumanProfile({personalityId:'missing'})"),/Unknown human personality/);
+assert.throws(()=>read("createHumanProfile({controller:'missing'})"),/Unknown human controller/);
+console.log('PASS: independent human profile IDs, same model/parts across three reactions, AI ownership, player control isolation and invalid configuration rejection. DOM/Three substitutes.');
+
 assert.equal(bootCalls.ready,1,'boot ready signaled once, after first successful renderer call');
 
 event('keydown',{key:'w',code:'KeyW'});

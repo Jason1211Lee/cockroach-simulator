@@ -379,6 +379,44 @@ assert.throws(()=>read("createHumanProfile({personalityId:'missing'})"),/Unknown
 assert.throws(()=>read("createHumanProfile({controller:'missing'})"),/Unknown human controller/);
 console.log('PASS: independent human profile IDs, same model/parts across three reactions, AI ownership, player control isolation and invalid configuration rejection. DOM/Three substitutes.');
 
+
+function fearScenario(personality='shy'){
+ element('#role').value='human';element('#mood').value=personality;element('#reset').onclick();
+ read('human.position.set(-4,0,1.6);roach.position.set(-4,0,1)');
+}
+const measuredFear={};
+for(const personality of ['shy','chase','spray']){
+ fearScenario(personality);const humanBeforeFear=read('JSON.stringify(human.position)');frames(20);
+ measuredFear[personality]=read('humanFear');
+ assert.equal(read('JSON.stringify(human.position)'),humanBeforeFear,'fear never forces player movement');
+ assert.equal(element('#fear-panel').hidden,false);
+ assert.equal(element('#fear-meter').value,read('humanFear'));
+}
+assert.ok(measuredFear.shy>measuredFear.spray&&measuredFear.spray>measuredFear.chase,'personalities have different accumulation rates');
+fearScenario();frames(20);const nearbyFear=read('humanFear');
+read('roach.position.set(4,0,3)');frames(10);assert.ok(read('humanFear')<nearbyFear,'distance restores composure');
+read('human.position.set(-4,0,1.6);roach.position.set(-4,0,1);cameraBoxes.push({min:{x:-4.2,y:0,z:1.2},max:{x:-3.8,y:2,z:1.3}})');
+const screenedFear=read('humanFear');frames(10);assert.ok(read('humanFear')<screenedFear,'furniture blocks fear trigger');
+read('cameraBoxes.pop()');
+element('#pause').onclick();const pausedFear=read('humanFear');frames(20);assert.equal(read('humanFear'),pausedFear);
+element('#pause').onclick();event('blur');frames(20);assert.equal(read('humanFear'),pausedFear,'blur freezes fear');
+element('#pause').onclick();read('end=true');frames(20);assert.equal(read('humanFear'),pausedFear,'ended game freezes fear');
+fearScenario();read('humanFear=80');frames(1);assert.match(element('#fear-label').textContent,/緊張/);
+const highFearZ=read('human.position.z');event('keydown',{key:'w',code:'KeyW'});frames(5);event('keyup',{key:'w'});
+assert.notEqual(read('human.position.z'),highFearZ,'high fear preserves movement input');
+read('roach.position.set(human.position.x,0,human.position.z)');element('#act').onclick();
+assert.equal(read('score'),1,'high fear preserves player action');
+element('#reset').onclick();assert.equal(read('humanFear'),0);
+element('#role').value='roach';element('#role').onchange();frames(1);
+assert.equal(read('humanFear'),0);assert.equal(element('#fear-panel').hidden,true);
+assert.equal(read("stepHumanFear(99,'shy',true,1)"),100);
+assert.equal(read("stepHumanFear(1,'shy',false,1)"),0);
+assert.throws(()=>read("stepHumanFear(0,'missing',true,1)"),/Unknown/);
+assert.throws(()=>read("stepHumanFear(0,'shy',true,-1)"),/Invalid/);
+const fearAtFps=fps=>read("(()=>{let fear=0;for(let i=0;i<"+fps+";i++)fear=stepHumanFear(fear,'shy',true,1/"+fps+");return fear})()");
+assert.ok(Math.abs(fearAtFps(30)-fearAtFps(60))<1e-9);
+console.log('PASS: player fear personality rates, distance/sight recovery, pause/blur/end freeze, UI state, retained movement/action, reset/role hiding, bounds and time-step consistency. DOM/Three substitutes.');
+
 assert.equal(bootCalls.ready,1,'boot ready signaled once, after first successful renderer call');
 
 event('keydown',{key:'w',code:'KeyW'});

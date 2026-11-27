@@ -417,6 +417,37 @@ const fearAtFps=fps=>read("(()=>{let fear=0;for(let i=0;i<"+fps+";i++)fear=stepH
 assert.ok(Math.abs(fearAtFps(30)-fearAtFps(60))<1e-9);
 console.log('PASS: player fear personality rates, distance/sight recovery, pause/blur/end freeze, UI state, retained movement/action, reset/role hiding, bounds and time-step consistency. DOM/Three substitutes.');
 
+
+function humanPose(){return read('JSON.stringify([humanWalkPhase,humanRig.legs.map(j=>j.rotation.x),humanRig.arms.map(j=>j.rotation.x)])')}
+element('#role').value='human';element('#reset').onclick();
+read('human.position.set(-4,0,0);roach.position.set(4,0,3)');
+assert.equal(read('humanWalkPhase'),0);frames(1);assert.equal(read('humanRig.legs[0].rotation.x'),0);
+event('keydown',{key:'w',code:'KeyW'});frames(10);
+assert.notEqual(read('humanRig.legs[0].rotation.x'),0,'moving player animates legs');
+assert.equal(read('humanRig.legs[0].rotation.x+humanRig.legs[1].rotation.x'),0,'legs alternate');
+assert.ok(read('humanRig.legs[0].rotation.x*humanRig.arms[0].rotation.x')<0,'arm counters same-side leg');
+const walkingPose=humanPose();element('#pause').onclick();frames(20);assert.equal(humanPose(),walkingPose,'pause freezes pose');
+element('#pause').onclick();frames(1);assert.equal(read('humanWalkPhase'),0,'released inputs return to standing');
+event('keydown',{key:'w',code:'KeyW'});frames(2);event('keyup',{key:'w'});read('end=true');
+const endedPose=humanPose();frames(10);assert.equal(humanPose(),endedPose,'ended game freezes pose');
+element('#reset').onclick();assert.equal(read('humanWalkPhase'),0);assert.equal(read('human.rotation.y'),0);
+read('human.position.set(-4,0,-2.17);roach.position.set(4,0,3)');
+const blockedZ=read('human.position.z');event('keydown',{key:'w',code:'KeyW'});frames(10);event('keyup',{key:'w'});
+assert.equal(read('human.position.z'),blockedZ);assert.equal(read('humanWalkPhase'),0,'blocked input does not walk in place');
+element('#role').value='roach';element('#mood').value='shy';element('#reset').onclick();
+read('human.position.set(-4,0,1.6);roach.position.set(-4,0,1)');frames(1);
+assert.ok(read('humanWalkPhase')>0,'fleeing NPC uses same walking rig');
+assert.ok(read('-Math.cos(human.rotation.y)')>.99,'fleeing NPC faces actual direction');
+element('#mood').value='chase';element('#mood').onchange();
+read('human.position.set(-4,0,1.6);roach.position.set(-4,0,1)');frames(1);
+assert.equal(read('chaseAttack.phase'),'windup');frames(1);assert.equal(read('humanWalkPhase'),0,'stopped attack windup stands still');
+read('updateHumanWalk(0);updateHumanWalk(.2)');const oneStepPose=humanPose();
+read('updateHumanWalk(0);for(let i=0;i<10;i++)updateHumanWalk(.02)');
+assert.ok(Math.abs(read('humanWalkPhase')-1.6)<1e-9,'walk cycle depends on travelled distance');
+assert.ok(Math.abs(JSON.parse(humanPose())[1][0]-JSON.parse(oneStepPose)[1][0])<1e-9,'equal distance yields same pose');
+element('#reset').onclick();
+console.log('PASS: articulated human walk, opposing limbs, stationary/blocked idle, player and AI movement, AI facing, pause/end freeze, windup stop, reset and distance-based phase. Transform checks only; no animation rendering.');
+
 assert.equal(bootCalls.ready,1,'boot ready signaled once, after first successful renderer call');
 
 event('keydown',{key:'w',code:'KeyW'});

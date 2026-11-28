@@ -448,6 +448,32 @@ assert.ok(Math.abs(JSON.parse(humanPose())[1][0]-JSON.parse(oneStepPose)[1][0])<
 element('#reset').onclick();
 console.log('PASS: articulated human walk, opposing limbs, stationary/blocked idle, player and AI movement, AI facing, pause/end freeze, windup stop, reset and distance-based phase. Transform checks only; no animation rendering.');
 
+
+element('#role').value='roach';element('#type').value='fast';element('#mood').value='chase';
+chaseSetup();assert.equal(read('humanRig.slipper.visible'),true);
+assert.equal(read('humanRig.slipper.children.length'),2,'placeholder sole and strap attached to hand');
+frames(26);const raisedArm=read('humanRig.arms[1].rotation.x');assert.ok(raisedArm<-1.9,'arm raises during warning');
+assert.equal(read('hp'),100,'raising arm does not damage early');
+element('#pause').onclick();const pausedSwing=read('humanRig.arms[1].rotation.x');frames(30);
+assert.equal(read('humanRig.arms[1].rotation.x'),pausedSwing,'paused windup pose freezes');
+element('#pause').onclick();frames(10);
+assert.ok(read('humanRig.arms[1].rotation.x')>raisedArm,'arm swings forward near end of warning');
+assert.equal(read('hp'),100);frames(2);
+assert.equal(read('chaseAttack.phase'),'recovery');assert.equal(read('hp'),80);
+assert.ok(Math.abs(read('humanRig.arms[1].rotation.x')-1.2)<1e-9,'impact gesture at existing strike boundary');
+frames(20);assert.ok(Math.abs(read('humanRig.arms[1].rotation.x'))<=.45*.65,'arm returns to walking after recovery gesture');
+assert.equal(read('hp'),80,'gesture adds no extra hit');
+chaseSetup();read('roach.position.z-=1');frames(38);
+assert.equal(read('hp'),100,'visible swing still misses an evaded fixed target');
+assert.ok(Math.abs(read('humanRig.arms[1].rotation.x')-1.2)<1e-9);
+element('#reset').onclick();assert.equal(read('humanRig.arms[1].rotation.x'),0,'restart clears gesture');
+element('#mood').value='shy';element('#mood').onchange();frames(1);assert.equal(read('humanRig.slipper.visible'),false);
+element('#mood').value='spray';element('#mood').onchange();frames(1);assert.equal(read('humanRig.slipper.visible'),false);
+element('#mood').value='chase';element('#role').value='human';element('#role').onchange();frames(1);
+assert.equal(read('humanRig.slipper.visible'),false,'player human is not given NPC chase gesture');
+assert.equal(read('humanRig.arms[1].rotation.x'),0);
+console.log('PASS: chase slipper prop, raised warning/forward swing/return, pause, existing strike timing, single damage, evade, restart and personality/controller visibility. Transform substitutes; no rendered animation or prop collision test.');
+
 assert.equal(bootCalls.ready,1,'boot ready signaled once, after first successful renderer call');
 
 event('keydown',{key:'w',code:'KeyW'});

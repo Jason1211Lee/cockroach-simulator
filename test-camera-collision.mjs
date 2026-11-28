@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import {cameraStopFraction as clip} from './camera-collision.mjs';
+const o={x:0,y:1,z:0},e={x:0,y:1,z:5},b={min:{x:-1,y:0,z:2},max:{x:1,y:2,z:3}};
+assert.equal(clip(o,e,[]),1);
+assert.ok(Math.abs(clip(o,e,[b])-.376)<1e-10);
+assert.equal(clip(o,{x:0,y:4,z:5},[b]),1);
+assert.equal(clip({x:3,y:1,z:0},{x:3,y:1,z:5},[b]),1);
+assert.equal(clip(o,o,[b]),1);
+assert.equal(clip({x:0,y:1,z:2.5},e,[b]),0);
+assert.ok(clip(o,e,[b,{min:{x:-1,y:0,z:1},max:{x:1,y:2,z:1.5}}])<clip(o,e,[b]));
+assert.ok(Math.abs(clip({x:0,y:1,z:5},o,[b])-.376)<1e-10);
+console.log('PASS: empty scene, obstruction/margin, above/parallel miss, zero length, inside box, nearest blocker and reverse ray.');
